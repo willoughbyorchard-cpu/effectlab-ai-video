@@ -1,0 +1,1 @@
+{"name":"effectlab-ai-video","version":"1.0.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"eslint ."},"dependencies":{"@fal-ai/client":"^1.6.2","next":"^15.5.0","react":"^19.1.0","react-dom":"^19.1.0","stripe":"^18.5.0"},"devDependencies":{"eslint":"^9.34.0","eslint-config-next":"^15.5.0"}}
