@@ -181,13 +181,16 @@ async function runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positi
       ?[{video:handle_file(danceFile),subtitles:null},(templateName==='24 Car Reveal'?2:Math.max(2,Math.min(20,frameCap/15))),handle_file(modelPhoto),'Character Swap','Low Res']
       :[handle_file(modelPhoto),480,832,{video:handle_file(danceFile),subtitles:null},480,832,frameCap,positivePrompt,NEGATIVE_PROMPT];
     const job=client.submit(provider.endpoint,args);
-    let outputData=null,jobError=null;
+    let outputData=null,jobError=null,lastStatus=null;
     const started=Date.now();
     for await(const message of job){
       if(message.type==='status'){
-        const st=message.status||{};
+        // Gradio emits status fields (stage/message/queue/eta) on the event itself;
+        // older code looked for message.status and silently missed every failure.
+        const st=message.status&&typeof message.status==='object'?{...message,...message.status}:message;
+        lastStatus=st;
         const state=String(st.status||st.stage||'').toLowerCase();
-        if(state==='error'||state==='failed'||state==='cancelled'||st.success===false){jobError=st.message||st.code||JSON.stringify(st)||'The renderer rejected the request.';try{job.cancel();}catch(e){}break;}
+        if(state==='error'||state==='failed'||state==='cancelled'||st.success===false){const detail=st.message??st.code??st.error??JSON.stringify(st);jobError=typeof detail==='string'?detail:JSON.stringify(detail);try{job.cancel();}catch(e){}break;}
         if(state==='pending'||state==='queued'){
           const pos=Number.isFinite(st.position)?' Queue position '+(st.position+1)+'.':'';
           const eta=Number.isFinite(st.eta)&&st.eta>0?' Estimated wait '+Math.ceil(st.eta)+' seconds.':'';
@@ -203,8 +206,8 @@ async function runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positi
         if(/quota|rate.?limit|zero.?gpu|auth|subscribe/i.test(log))$('fileStatus').textContent=provider.name+' has reached its free GPU limit; checking the backup…';
       }
     }
-    if(jobError)throw new Error(String(jobError));
-    if(!outputData)throw new Error('Renderer returned no video. Its free queue may be busy.');
+    if(jobError)throw new Error(provider.name+' returned an error: '+String(jobError).slice(0,420));
+    if(!outputData)throw new Error(provider.name+' finished without returning video data. Last status: '+JSON.stringify(lastStatus).slice(0,350));
     const candidate=Array.isArray(outputData)?outputData[0]:outputData;
     const outputUrl=videoResultUrl(candidate,provider.base);
     if(!outputUrl)throw new Error('Renderer did not return a usable video file.');
@@ -233,7 +236,7 @@ async function renderFullBodySwap(photoFile,templateName){
     const provider=providers[i];
     $('fileStatus').textContent=(i===0?'Trying the alternate free AI renderer inside EffectLab…':'The first renderer failed. Trying the backup inside EffectLab…');
     try{outputBlob=await runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positivePrompt,templateName);$('fileStatus').textContent=provider.name+' finished the render. Finalising the video inside EffectLab…';break;}
-    catch(e){const detail=String(e&&e.message||e).split(String.fromCharCode(10))[0].slice(0,140);providerErrors.push(provider.name+': '+detail);console.warn('EffectLab provider failed:',provider.name,e);if(i<providers.length-1)$('fileStatus').textContent=provider.name+' did not complete; automatically switching renderer…';}
+    catch(e){const detail=String(e&&e.message||e).split(String.fromCharCode(10))[0].slice(0,420);providerErrors.push(provider.name+': '+detail);console.warn('EffectLab provider failed:',provider.name,e);if(i<providers.length-1)$('fileStatus').textContent=provider.name+' did not complete; automatically switching renderer…';}
   }
   if(!outputBlob)throw new Error('Both free AI renderers failed. '+providerErrors.join(' | ')+'. Their queues or hosting may be temporarily unavailable; try again later.');
   let finalBlob=outputBlob;
