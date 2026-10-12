@@ -70,6 +70,7 @@ function handlePhotoFile(file){
   if(!file.type||!file.type.startsWith('image/')){toastMsg('Please choose a photo image, such as JPG or PNG.');return;}
   if(file.size>25*1024*1024){toastMsg('That photo is too large. Please use an image under 25 MB.');return;}
   selectedPhoto=file;
+  photoInput.value=""; // allow selecting the same file again after a retry
   if(photoPreviewUrl)URL.revokeObjectURL(photoPreviewUrl);
   photoPreviewUrl=URL.createObjectURL(file);
   const preview=document.getElementById('photoPreview');
