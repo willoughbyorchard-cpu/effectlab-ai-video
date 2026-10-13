@@ -13,8 +13,8 @@ class ScratchModelTests(unittest.TestCase):
         output = model(reference, driving)
         self.assertEqual(tuple(output.shape), (1, 3, 2, 64, 64))
         self.assertTrue(bool(torch.isfinite(output).all()))
-        self.assertGreaterEqual(float(output.min()), 0.0)
-        self.assertLessEqual(float(output.max()), 1.0)
+        self.assertGreaterEqual(float(output.min().detach()), 0.0)
+        self.assertLessEqual(float(output.max().detach()), 1.0)
 
     def test_gradients_reach_inputs_and_weights(self):
         model = EffectLabScratchVideoAI()

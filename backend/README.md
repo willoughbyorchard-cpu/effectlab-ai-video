@@ -66,4 +66,4 @@ Only localhost is exposed by the default launcher. The service uses a random API
 
 ## Current status
 
-The original architecture, training loop, local inference API, local frontend and launch scripts are implemented. Python/JavaScript/shell syntax checks pass. A trained checkpoint and real full-body test video are not included because no aligned training dataset or GPU was available in this coding session. This is an honest first-party AI training project, not yet a working trained character replacement model.
+The original architecture, training loop, local inference API, local frontend and launch scripts are implemented. Python/JavaScript/shell syntax checks pass; the model smoke tests in backend/tests check tensor shapes, output range and gradient flow. A trained checkpoint and real full-body test video are not included because no aligned training dataset or GPU was available in this coding session. This is an honest first-party AI training project, not yet a working trained character replacement model.
