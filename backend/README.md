@@ -1,45 +1,69 @@
-# EffectLab — Local Full-Body Engine
+# EffectLab Scratch — original AI video model
 
-This version does not call a public AI-rendering website. The browser interface and generation API are served together from your own machine at http://127.0.0.1:7860. Uploaded photos and source clips are submitted to that local API and the Wan 2.2 Animate pipeline runs on your machine's NVIDIA GPU.
+EffectLab Scratch is a first-party, train-from-random-initialisation video network. It does not load Wan, ComfyUI, Hugging Face checkpoints, pretrained feature extractors, or hosted AI inference APIs. The model architecture is in scratch_model.py; training code is in train_scratch.py; local inference and its API are in app.py.
 
-## First, check the hardware
+IMPORTANT: this repository contains model code, not a trained model checkpoint. It cannot perform convincing full-body replacement until trained on suitable examples. Random weights are not a working AI.
 
-- Linux or Windows with WSL2 and Docker, a working NVIDIA driver, and Docker GPU support.
-- Wan 2.2 Animate is a 14B-parameter video model. Official deployments list very high GPU memory requirements; NVIDIA's support matrix lists 80 GB GPU memory as the minimum for Wan2.2-Animate-14B. The quantised ComfyUI pipeline here may use less, but it has not been validated on a 24 GB card. Integrated graphics and ordinary Mac hardware are not enough for this setup.
-- Tens of GB of free disk space for model weights, ComfyUI, dependencies and cache.
+## What the network does
 
-Model reference: https://github.com/Wan-Video/Wan2.2 . NVIDIA deployment requirements: https://docs.nvidia.com/nim/visual-genai/latest/support-matrix.html
+- Encodes the entire reference photo into trainable appearance features.
+- Encodes a short source-video clip using 3D convolutions to learn motion and scene context.
+- Fuses reference appearance features into the temporal network at multiple resolutions.
+- Decodes a replacement video clip, using temporal and image losses during training.
 
-## Run locally
+Every AI layer starts from random initialisation. The inference server checks checkpoint metadata and refuses to render if there is no trained EffectLab Scratch checkpoint.
 
-1. Clone or download this repository onto the NVIDIA GPU computer.
-2. Open a terminal in the backend folder.
-3. Run docker build -t effectlab-engine . (the launch script does this the first time automatically).
-4. Run bash run-local.sh.
-5. Keep the terminal open. Open http://127.0.0.1:7860 in your browser. Copy the private API key printed in the terminal into the Local GPU engine settings and save it.
-6. Wait for model loading to complete. The health check in the settings will report readiness.
+## The hard part is the training data
 
-The script binds the service to 127.0.0.1 only; it is not exposed to your home network or the public internet. Do not change the port binding to 0.0.0.0 unless you understand the security implications.
+To teach a model to replace the person rather than paste a face on top, training requires aligned examples of what a correct replacement looks like. Each training sequence folder needs:
 
-## Fully local media use
+~~~text
+training-data/
+  sequence_0001/
+    reference.jpg   # full-body photo of the identity to render
+    driving.mp4     # source person's movement and scene
+    target.mp4      # desired person in that movement, aligned frame-for-frame
+  sequence_0002/
+    reference.jpg
+    driving.mp4
+    target.mp4
+~~~
 
-The standalone local page does not load remote preview images or stock clips. Upload your own source MP4 in the optional source-video section for each effect and upload a full-body reference image. You may need to choose the source-video upload even if a trend card is selected. The local page contains the UI; there is no external inference/API call.
+driving.mp4 and target.mp4 must show the same action and camera timing; the target video must show the intended replacement identity and be a real training label, not a renamed copy of the source. Include many identities, clothes, body shapes, camera angles, lighting conditions and movements to generalise. One or two examples only test the code; they do not train a reliable AI. You must have permission to use all training footage.
 
-## What downloads externally?
+## Train your own checkpoint
 
-At first build, Docker downloads open-source runtime code and Python packages. On the first model startup, the backend downloads the published model weights and the required detection/segmentation weights into a local cache. Those downloads are model files, not user photos or videos. Subsequent runs reuse the cached weights. Once everything is downloaded, rendering itself can run with the machine offline if all dependencies and weights are present.
+Training is strongly recommended on a CUDA-capable NVIDIA GPU. CPU training is technically supported by PyTorch but is impractically slow for this video model.
 
-This is self-hosted inference, not a model trained from scratch. The underlying pretrained Wan 2.2 Animate weights were released by the model authors. Reproducing their training process would require a large training dataset and far more compute. No user media is submitted to Hugging Face Spaces, an AI-rendering website, or an EffectLab cloud server in this local setup.
+1. Put aligned sequence folders in backend/training-data/, or set the DATA_DIR environment variable to your dataset path.
+2. Open a terminal in backend/ and run ./train-model.sh.
+3. Set EPOCHS=100 BATCH_SIZE=1 ./train-model.sh to change training settings. Training starts from random weights and saves effectlab_scratch.pt in the Docker volume effectlab-model-weights.
+4. After training, run ./run-local.sh and open http://127.0.0.1:7860.
+5. The launch script prints a private API key; paste it into the local page's engine settings. Check engine health before generating.
 
-## API and security
+Training command implemented by the script:
 
-- GET /health — model status and visible GPU.
-- POST /api/jobs — local multipart input (reference photo, source clip, prompt, frame cap).
-- GET /api/jobs/{job_id} — progress.
-- GET /api/jobs/{job_id}/result — MP4 output.
+~~~bash
+docker run --rm --gpus all -v /path/to/training-data:/data:ro -v effectlab-model-weights:/app/weights effectlab-scratch python /app/train_scratch.py --data /data --output /app/weights/effectlab_scratch.pt --epochs 100 --batch-size 1
+~~~
 
-The local launch script generates a random API key and binds the service to localhost. The key is only held in the current browser tab. Input files are removed from the temporary job directory after processing; generated MP4s stay in temporary local storage until you delete them or remove the Docker volume.
+## Local generation
 
-## Limitations
+./run-local.sh builds the app image and serves the bundled UI and API at http://127.0.0.1:7860. The server binds to localhost only. It does not upload photos/videos to any public rendering website or external AI API. It loads only the checkpoint you trained yourself.
 
-This code has passed Python/JavaScript syntax checks and is committed in the repository, but a real render has not been completed in this environment because it has no Docker runtime or GPU. The model pipeline may still need dependency or VRAM adjustments on a specific GPU. The GPU backend will reject startup if it cannot see a working NVIDIA GPU rather than downloading model weights onto an unsupported machine.
+At build time Docker downloads the base runtime and ordinary software packages (PyTorch is the tensor/training framework, not a pretrained generator). No AI model weights are downloaded. After software dependencies and your model are available locally, inference itself works offline.
+
+Inputs are limited to a 20 MB reference image, 80 MB source video, 8 seconds duration and 150 frames. Model resolution is 128×192 in this prototype, so output detail is low; it is not a finished commercial-quality system. Improve resolution/architecture and train on a substantial dataset before expecting convincing performance.
+
+## API
+
+- GET /health reports whether a trained checkpoint is loaded.
+- POST /api/jobs accepts a reference image plus driving video.
+- GET /api/jobs/{job_id} reports inference progress.
+- GET /api/jobs/{job_id}/result returns the generated MP4.
+
+Only localhost is exposed by the default launcher. The service uses a random API key and stores temporary render files locally.
+
+## Current status
+
+The original architecture, training loop, local inference API, local frontend and launch scripts are implemented. Python/JavaScript/shell syntax checks pass. A trained checkpoint and real full-body test video are not included because no aligned training dataset or GPU was available in this coding session. This is an honest first-party AI training project, not yet a working trained character replacement model.

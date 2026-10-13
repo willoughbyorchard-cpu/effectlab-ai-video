@@ -3,3 +3,9 @@
 .env
 .venv
 .git
+training-data/
+weights/
+*.mp4
+*.mov
+*.webm
+output/
