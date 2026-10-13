@@ -20,6 +20,7 @@ import uuid
 import zipfile
 import tempfile
 import stat
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,7 +34,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from scratch_model import EffectLabScratchVideoAI
 
-APP_TITLE = "EffectLab Scratch — local video AI"
+APP_TITLE = "EffectLab AI video engine"
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_PAGE = BASE_DIR / "static" / "index.html"
 CHECKPOINT = Path(os.environ.get("EFFECTLAB_CHECKPOINT", str(BASE_DIR / "weights" / "effectlab_scratch.pt")))
@@ -49,6 +50,8 @@ MAX_VIDEO_BYTES = 80 * 1024 * 1024
 MAX_VIDEO_SECONDS = float(os.environ.get("EFFECTLAB_MAX_VIDEO_SECONDS", "8"))
 MAX_FRAMES = 150
 MAX_JOBS_PER_HOUR = 4
+FAL_KEY_CONFIGURED = bool(os.environ.get("FAL_KEY"))
+FAL_MODEL_ID = os.environ.get("EFFECTLAB_FAL_MODEL", "fal-ai/pixverse/swap")
 
 app = FastAPI(title=APP_TITLE, version="0.4.0")
 _origins = [
@@ -225,7 +228,9 @@ def serve_training_page() -> FileResponse:
 def health() -> dict[str, Any]:
     return {
         "service": APP_TITLE,
-        "ready": STATE["ready"],
+        "engine": "fal.ai" if FAL_KEY_CONFIGURED else "local-scratch",
+        "fal_configured": FAL_KEY_CONFIGURED,
+        "ready": FAL_KEY_CONFIGURED or STATE["ready"],
         "loading": STATE["loading"],
         "error": STATE["error"] if not STATE["ready"] else None,
         "device": STATE["device"],
@@ -354,6 +359,48 @@ def _render_video(job_id: str, reference_path: Path, source_path: Path, frame_ca
                 pass
 
 
+def _render_fal_job(job_id: str, reference_path: Path, source_path: Path) -> None:
+    """Run PixVerse Swap through fal.ai; FAL_KEY must remain server-side."""
+    job_dir = WORK_ROOT / job_id
+    result_path = job_dir / "result.mp4"
+    try:
+        import fal_client
+        _job_update(job_id, status="processing", progress=0.05, message="Uploading video securely to fal.ai")
+        video_url = fal_client.upload_file(str(source_path))
+        image_url = fal_client.upload_file(str(reference_path))
+        _job_update(job_id, progress=0.15, message="fal.ai is processing the person swap")
+        result = fal_client.subscribe(
+            FAL_MODEL_ID,
+            arguments={
+                "video_url": video_url,
+                "image_url": image_url,
+                "mode": "person",
+                "resolution": "720p",
+                "original_sound_switch": True,
+                "enable_safety_checker": True,
+            },
+        )
+        video_info = result.get("video") if isinstance(result, dict) else None
+        result_url = video_info.get("url") if isinstance(video_info, dict) else None
+        if not result_url:
+            raise RuntimeError("fal.ai completed without returning a video URL.")
+        _job_update(job_id, progress=0.9, message="Downloading the generated video")
+        request = urllib.request.Request(result_url, headers={"User-Agent": "EffectLab/1.0"})
+        with urllib.request.urlopen(request, timeout=180) as response, result_path.open("wb") as output:
+            shutil.copyfileobj(response, output)
+        if not result_path.is_file() or result_path.stat().st_size < 1000:
+            raise RuntimeError("fal.ai output download was empty or invalid.")
+        _job_update(job_id, status="complete", progress=1.0, message="Person swap completed by fal.ai", result=str(result_path))
+    except Exception as exc:
+        _job_update(job_id, status="failed", message="fal.ai generation failed", error=f"{type(exc).__name__}: {exc}")
+    finally:
+        for path in (reference_path, source_path):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 @app.post("/api/jobs")
 async def create_job(
     request: Request,
@@ -366,15 +413,15 @@ async def create_job(
 ) -> dict[str, Any]:
     _require_auth(authorization)
     _rate_limit(request)
-    if not STATE["ready"] or MODEL is None:
+    if not FAL_KEY_CONFIGURED and (not STATE["ready"] or MODEL is None):
         raise HTTPException(
             status_code=503,
-            detail=STATE.get("error") or "The locally trained EffectLab Scratch checkpoint is not ready.",
+            detail=STATE.get("error") or "Set FAL_KEY on the backend host to enable automatic hosted generation.",
         )
     with JOBS_LOCK:
         active = sum(1 for job in JOBS.values() if job["status"] in {"queued", "processing"})
         if active >= 2:
-            raise HTTPException(status_code=429, detail="The local GPU is busy. Try again when the current render finishes.")
+            raise HTTPException(status_code=429, detail="EffectLab is busy. Try again when the current render finishes.")
     frame_cap = max(CLIP_FRAMES, min(int(frame_cap), MAX_FRAMES))
     image_name = Path(image.filename or "reference.jpg").name
     suffix = Path(image_name).suffix.lower()
@@ -420,7 +467,7 @@ async def create_job(
         "id": job_id,
         "status": "queued",
         "progress": 0.0,
-        "message": "Waiting for the local model",
+        "message": "Waiting for fal.ai" if FAL_KEY_CONFIGURED else "Waiting for the local model",
         "error": None,
         "result_path": None,
         "created_at": time.time(),
@@ -428,7 +475,10 @@ async def create_job(
     }
     with JOBS_LOCK:
         JOBS[job_id] = job
-    GPU_QUEUE.submit(_render_video, job_id, image_path, video_path, frame_cap)
+    if FAL_KEY_CONFIGURED:
+        GPU_QUEUE.submit(_render_fal_job, job_id, image_path, video_path)
+    else:
+        GPU_QUEUE.submit(_render_video, job_id, image_path, video_path, frame_cap)
     return _public_job(job)
 
 
