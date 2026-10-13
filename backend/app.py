@@ -47,7 +47,7 @@ _origins = [
     part.strip()
     for part in os.environ.get(
         "EFFECTLAB_ALLOWED_ORIGINS",
-        "http://127.0.0.1:7860,http://localhost:7860",
+        "http://127.0.0.1:7860,http://localhost:7860,https://willoughbyorchard-cpu.github.io",
     ).split(",")
     if part.strip()
 ]
