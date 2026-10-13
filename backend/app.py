@@ -180,9 +180,14 @@ def _bootstrap_comfyui_runtime() -> None:
             f"ComfyUI was not found at {COMFYUI_PATH}. Build the supplied Docker image or set COMFYUI_PATH."
         )
     sys.path.insert(0, str(COMFYUI_PATH))
-    import comfy.options
-    comfy.options.enable_args_parsing()
-    from comfy.cli_args import args
+    original_argv = sys.argv[:]
+    sys.argv = [sys.argv[0], "--disable-cuda-malloc"]
+    try:
+        import comfy.options
+        comfy.options.enable_args_parsing()
+        from comfy.cli_args import args
+    finally:
+        sys.argv = original_argv
     if os.name == "nt":
         os.environ["MIMALLOC_PURGE_DELAY"] = "0"
     if args.deterministic and "CUBLAS_WORKSPACE_CONFIG" not in os.environ:
@@ -201,8 +206,9 @@ def _import_custom_nodes() -> None:
     asyncio.set_event_loop(loop)
     server_instance = server.PromptServer(loop)
     execution.PromptQueue(server_instance)
-    loop.run_until_complete(init_extra_nodes())
-    loop.close()
+    # Match the current ComfyUI exported workflow bootstrap: custom nodes
+    # initialise in a clean async context instead of uvicorn's event loop.
+    asyncio.run(init_extra_nodes())
 
 
 def _initialize_pipeline() -> None:
