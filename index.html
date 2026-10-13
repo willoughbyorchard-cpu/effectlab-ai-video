@@ -47,8 +47,8 @@
 </section>
 <section class="panel" style="grid-column:1/-1">
 <div class="panel-head"><span class="number">03</span><div><h2>Generate your swap</h2><p>Uses an EffectLab engine you control — no third-party AI service</p></div><span class="badge">Local engine</span></div>
-<label class="choice" style="margin-bottom:12px;max-width:600px"><input id="privacyConsent" type="checkbox"><span>I understand my selected files will be processed by the EffectLab engine running on this computer. I will only upload footage and photos I have permission to use.</span></label>
-<p class="small-note">EffectLab connects automatically to the local engine at <code>127.0.0.1:7860</code>. A browser page cannot start a program on your computer; if the engine is stopped, open the EffectLab launcher first.</p>
+<label class="choice" style="margin-bottom:12px;max-width:600px"><input id="privacyConsent" type="checkbox"><span>I understand my selected files will be sent to the EffectLab engine URL I selected (local or online). I will only upload footage and photos I have permission to use.</span></label>
+<label class="field-label" for="engineUrl">EffectLab engine URL (optional)</label><input id="engineUrl" type="url" placeholder="https://your-session.trycloudflare.com" style="width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--text);margin-bottom:12px"><p class="small-note">For the free online option, start the <a href="https://colab.research.google.com/github/willoughbyorchard-cpu/effectlab-ai-video/blob/main/EffectLab_Free_Online_Engine.ipynb" target="_blank" rel="noopener">EffectLab Google Colab engine</a>, then paste its temporary URL here. Leave blank to use the engine on this computer.</p>
 <button class="primary" id="generateBtn" type="submit">Generate swap</button>
 <div class="status" id="status" role="status" aria-live="polite">Ready when you are. Choose a source video and the replacement image for the target you selected.</div>
 <div class="result" id="result" hidden></div>
@@ -57,7 +57,7 @@
 </div>
 </form>
 </main>
-<footer class="wrap footer"><strong>EffectLab AI</strong><br>Built around your own uploads, not a stock template library. Your files are sent only to your local engine.</footer>
+<footer class="wrap footer"><strong>EffectLab AI</strong><br>Built around your own uploads, not a stock template library. Your files are sent to the engine URL you choose.</footer>
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
@@ -82,7 +82,7 @@ async function render(){
  if(mode.object&&!objectFile)throw new Error('Upload a replacement object photo.');
  if(mode.object)throw new Error(mode.person?'The current model cannot yet replace a person and an object together. The object upload is saved in this page, but rendering both targets is not implemented, so no fake result was created.':'Object replacement is not implemented in the current EffectLab Scratch model yet. The photo is selected, but the model can only render person replacement.');
  if(!$('privacyConsent').checked)throw new Error('Confirm the file-processing notice before sending anything to your chosen engine.');
- const base='http://127.0.0.1:7860';
+ const base=($('engineUrl').value.trim()||'http://127.0.0.1:7860').replace(/\/+$/,'');
  $('generateBtn').disabled=true;$('generateBtn').textContent='Connecting to EffectLab…';$('result').hidden=true;
  try{
    status('Checking your EffectLab engine…');
