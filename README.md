@@ -15,3 +15,19 @@ The public GitHub Pages site is static and cannot train or run inference on GitH
 ## Important limitations
 
 A compact CPU-friendly training path is implemented, but the repository does not include a trained checkpoint. The model starts from random weights and the first training runs are experiments. A completed training run does not guarantee a meaningful person replacement. The current inference path supports person replacement only, at low resolution, without preserving audio. Object replacement is not implemented.
+
+
+## Automatic hosted generation with fal.ai
+
+EffectLab can use fal.ai's PixVerse Swap API instead of the experimental local scratch model. The API key must be configured **only on the backend host** as the `FAL_KEY` environment secret. Never put it in `index.html`, browser JavaScript, or a committed file.
+
+- Model endpoint: `fal-ai/pixverse/swap` (person swap, up to 720p according to the provider schema).
+- Optional override: `EFFECTLAB_FAL_MODEL`.
+- The backend uploads the reference image and source clip to fal.ai, submits a swap job, and downloads the result.
+- fal.ai usage is billed according to its current model pricing; check the model page before testing.
+
+### Run/deploy the backend
+
+The GitHub Pages site is static and cannot keep the API key secret or run the backend. Deploy the `backend` directory/container to a server host that supports Docker and environment secrets, set `FAL_KEY` in that host's secret/environment settings, and allow the site origin `https://willoughbyorchard-cpu.github.io` in `EFFECTLAB_ALLOWED_ORIGINS`. Then set the backend's public HTTPS URL in the EffectLab engine URL field. Once that backend is deployed and running, visitors will not need to open Colab or activate an engine.
+
+Before a public launch, add per-user rate limits/authentication and a budget cap: this API key pays for requests made through your website. Do not expose the backend publicly without abuse controls.
