@@ -11,15 +11,10 @@ mkdir -p "$PWD/weights"
 export EFFECTLAB_CHECKPOINT="${EFFECTLAB_CHECKPOINT:-$PWD/weights/effectlab_scratch.pt}"
 export EFFECTLAB_TRAINING_ROOT="${EFFECTLAB_TRAINING_ROOT:-$PWD/training-data}"
 export EFFECTLAB_WORK_ROOT="${EFFECTLAB_WORK_ROOT:-$HOME/.effectlab/work}"
-if [ -z "${EFFECTLAB_API_KEY:-}" ]; then
-  EFFECTLAB_API_KEY="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_urlsafe(32))')"
-  export EFFECTLAB_API_KEY
-fi
 echo
 echo "EffectLab local UI: http://127.0.0.1:7860"
 echo "Training page:       http://127.0.0.1:7860/train.html"
-echo "Private API key (copy this into the training page):"
-echo "$EFFECTLAB_API_KEY"
+echo "No API key is needed. The engine listens only on this computer; keep this terminal open."
 echo "Training and inference use this laptop; no hosted AI renderer is called."
 echo "Press Ctrl+C to stop."
 exec "$PYTHON_BIN" -m uvicorn app:app --host 127.0.0.1 --port 7860

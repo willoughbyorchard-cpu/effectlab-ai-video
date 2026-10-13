@@ -52,7 +52,7 @@
 <summary>Connect your own EffectLab engine</summary>
 <p>Run the EffectLab backend on your own computer with a trained Scratch checkpoint. This public page does not send media to an outside AI provider. The current model is still a prototype and will report an error if no trained checkpoint is installed.</p>
 <label for="engineUrl">Engine URL</label><input id="engineUrl" type="url" value="http://127.0.0.1:7860" autocomplete="url" spellcheck="false">
-<label for="engineKey">Private API key</label><input id="engineKey" type="password" placeholder="Your EFFECTLAB_API_KEY" autocomplete="off">
+
 </details>
 <button class="primary" id="generateBtn" type="submit">Generate swap</button>
 <div class="status" id="status" role="status" aria-live="polite">Ready when you are. Choose a source video and the replacement image for the target you selected.</div>
@@ -87,11 +87,10 @@ async function render(){
  if(mode.object&&!objectFile)throw new Error('Upload a replacement object photo.');
  if(mode.object)throw new Error(mode.person?'The current model cannot yet replace a person and an object together. The object upload is saved in this page, but rendering both targets is not implemented, so no fake result was created.':'Object replacement is not implemented in the current EffectLab Scratch model yet. The photo is selected, but the model can only render person replacement.');
  if(!$('privacyConsent').checked)throw new Error('Confirm the file-processing notice before sending anything to your chosen engine.');
- let base=$('engineUrl').value.trim().replace(/\/+$/,'');const key=$('engineKey').value.trim();
+ let base=$('engineUrl').value.trim().replace(/\/+$/,'');
  if(!base)throw new Error('Enter your own EffectLab engine URL.');
  let url;try{url=new URL(base);}catch(_){throw new Error('Enter a valid engine URL.');}
  if(url.protocol!=='https:'&&url.hostname!=='localhost'&&url.hostname!=='127.0.0.1')throw new Error('Use HTTPS for a remote engine. HTTP is allowed only for localhost or 127.0.0.1.');
- if(!key)throw new Error('Enter your private EFFECTLAB_API_KEY. It is kept in this page session and is not saved.');
  $('generateBtn').disabled=true;$('generateBtn').textContent='Connecting to EffectLab…';$('result').hidden=true;
  try{
    status('Checking your EffectLab engine…');
@@ -101,19 +100,19 @@ async function render(){
    if(!health.ready)throw new Error('The EffectLab engine is reachable, but its own Scratch model is not ready yet. '+String(health.error||'No trained checkpoint is loaded.')+' See backend/README.md. No third-party AI will be used.');
    const form=new FormData();form.append('image',personFile,personFile.name);form.append('video',sourceFile,sourceFile.name);form.append('frame_cap','120');form.append('prompt','Replace the main person in the user-uploaded video with the reference person. Preserve the source movement, scene and camera framing.');
    status('Uploading your video and replacement photo to your own EffectLab engine…');
-   const createResponse=await fetch(base+'/api/jobs',{method:'POST',headers:{Authorization:'Bearer '+key},body:form});const job=await readJson(createResponse);
+   const createResponse=await fetch(base+'/api/jobs',{method:'POST',headers:{},body:form});const job=await readJson(createResponse);
    if(!createResponse.ok)throw new Error(String(job.detail||job.error||('Render request failed, HTTP '+createResponse.status)));
    if(!job.id)throw new Error('The engine returned no job ID.');
    const started=Date.now();
    while(Date.now()-started<1800000){
      await new Promise(r=>setTimeout(r,1800));
-     const sr=await fetch(base+'/api/jobs/'+encodeURIComponent(job.id),{headers:{Authorization:'Bearer '+key,Accept:'application/json'}});const state=await readJson(sr);
+     const sr=await fetch(base+'/api/jobs/'+encodeURIComponent(job.id),{headers:{Accept:'application/json'}});const state=await readJson(sr);
      if(!sr.ok)throw new Error(String(state.detail||('Could not check render status, HTTP '+sr.status)));
      const pct=Math.round(Math.max(0,Math.min(1,Number(state.progress)||0))*100);
      $('generateBtn').textContent='Rendering '+pct+'%';status((state.message||state.status||'Rendering')+' · '+pct+'%');
      if(state.status==='failed')throw new Error(String(state.error||state.message||'The local model failed.'));
      if(state.status==='complete'){
-       const rr=await fetch(base+'/api/jobs/'+encodeURIComponent(job.id)+'/result',{headers:{Authorization:'Bearer '+key}});
+       const rr=await fetch(base+'/api/jobs/'+encodeURIComponent(job.id)+'/result',{headers:{}});
        if(!rr.ok){const e=await readJson(rr);throw new Error(String(e.detail||'The engine could not return the rendered video.'));}
        const blob=await rr.blob();if(blob.size<1000)throw new Error('The engine returned an empty output file.');
        revoke(resultUrl);resultUrl=URL.createObjectURL(blob);

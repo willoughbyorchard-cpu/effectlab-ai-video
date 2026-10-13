@@ -37,7 +37,7 @@
 <section class="panel">
 <div class="head"><span class="num">02</span><div><h2>Connect your local engine</h2><p>Run the engine on the same computer that stores your data.</p></div></div>
 <label class="field" for="engineUrl">Local engine URL</label><input id="engineUrl" type="url" value="http://127.0.0.1:7860" autocomplete="url" spellcheck="false">
-<label class="field" for="engineKey">Private API key</label><input id="engineKey" type="password" placeholder="Copy from the run-local window" autocomplete="off">
+
 <button class="secondary" id="checkBtn" type="button" style="width:100%;margin-top:12px">Check local engine</button>
 <div class="status" id="engineStatus" role="status" aria-live="polite">The local engine must be running first. For best compatibility, open this page at http://127.0.0.1:7860/train.html.</div>
 <div class="note">The GitHub Pages version is only a website. It cannot train on GitHub's servers. This page talks to the local Python engine on your machine, which stores the training files and checkpoint on your disk.</div>
@@ -63,7 +63,7 @@ const $=function(id){return document.getElementById(id);};
 let uploaded=false,activeJob=null,pollHandle=null,folderFiles=[];
 function setStatus(id,msg,kind){const el=$(id);el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
 function baseUrl(){const raw=$('engineUrl').value.trim().replace(/\/+$/,'');let u;try{u=new URL(raw);}catch(e){throw new Error('Enter a valid local engine URL.');}if(u.protocol!=='http:'&&u.protocol!=='https:')throw new Error('Use an HTTP or HTTPS engine URL.');return raw;}
-function authHeaders(){const key=$('engineKey').value.trim();if(!key)throw new Error('Paste the private API key printed by run-local.');return {'Authorization':'Bearer '+key,'Accept':'application/json'};}
+function authHeaders(){return {'Accept':'application/json'};}
 async function readJson(res){let t='';try{t=await res.text();return JSON.parse(t);}catch(e){return {detail:t||'The local engine returned an unreadable response.'};}}
 function selectedFiles(){const folder=Array.from($('folderInput').files||[]);const files=Array.from($('filesInput').files||[]);return folder.length?folder:files;}
 async function checkEngine(){

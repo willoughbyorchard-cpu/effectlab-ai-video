@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from scratch_model import EffectLabScratchVideoAI
 
@@ -90,14 +90,19 @@ MAX_TRAINING_FILES = 1000
 
 
 def _require_auth(authorization: str | None) -> None:
-    secret = os.environ.get("EFFECTLAB_API_KEY", "").strip()
-    if not secret:
-        raise HTTPException(status_code=503, detail="Local engine API key is not configured.")
-    given = ""
-    if authorization and authorization.lower().startswith("bearer "):
-        given = authorization[7:].strip()
-    if not given or not secrets.compare_digest(secret, given):
-        raise HTTPException(status_code=401, detail="Wrong or missing local EffectLab API key.")
+    """No user-entered key is needed for the loopback-only local engine."""
+    # The provided launch scripts bind uvicorn to 127.0.0.1 only. Browser-origin
+    # requests are separately restricted to EFFECTLAB_ALLOWED_ORIGINS below.
+    # Do not expose this development server directly to a public network.
+    return
+
+
+@app.middleware("http")
+async def restrict_browser_origins(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and origin and origin not in _origins:
+        return JSONResponse(status_code=403, content={"detail": "Origin not allowed."})
+    return await call_next(request)
 
 
 def _rate_limit(request: Request) -> None:

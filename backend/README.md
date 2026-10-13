@@ -7,11 +7,11 @@ EffectLab Scratch is an original neural network trained from random weights. It 
 1. Install Python 3.11 or 3.12 from python.org.
 2. Open PowerShell in the backend folder.
 3. Run Set-ExecutionPolicy -Scope Process Bypass and then .\setup-laptop.ps1.
-4. Run .\run-local.ps1. Keep the terminal open and copy the private API key it prints.
-5. Open http://127.0.0.1:7860/train.html in your browser and paste the API key.
+4. Run .\run-local.ps1 and keep the terminal open. No API key is required.
+5. Open http://127.0.0.1:7860/train.html in your browser; the training page connects without a key.
 6. Select a dataset ZIP or the full training-data folder, upload it, then start with 1 epoch and 20 steps.
 
-No NVIDIA GPU or Docker is required by the native laptop path. The setup uses the CPU build of PyTorch. Mac/Linux users can run bash setup-laptop.sh, then bash run-local.sh.
+No NVIDIA GPU or Docker is required by the native laptop path. The setup uses the CPU build of PyTorch. Mac/Linux users can run bash setup-laptop.sh, then bash run-local.sh. Both launchers bind the engine to 127.0.0.1; do not expose this development server directly to the internet.
 
 ## Expected data layout
 
