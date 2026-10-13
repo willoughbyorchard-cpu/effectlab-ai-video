@@ -42,10 +42,10 @@ class AlignedSwapDataset(Dataset):
         self.clip_frames = clip_frames
         self.items: list[tuple[Path, Path, Path, int]] = []
         for folder in sorted(p for p in self.root.iterdir() if p.is_dir()):
-            ref = next((folder / n for n in ("reference.jpg", "reference.jpeg", "reference.png") if (folder / n).is_file()), None)
-            driving = folder / "driving.mp4"
-            target = folder / "target.mp4"
-            if not ref or not driving.is_file() or not target.is_file():
+            ref = next((folder / n for n in ("reference.jpg", "reference.jpeg", "reference.png", "reference.webp") if (folder / n).is_file()), None)
+            driving = next((folder / ("driving" + ext) for ext in (".mp4", ".mov", ".m4v", ".avi", ".webm") if (folder / ("driving" + ext)).is_file()), None)
+            target = next((folder / ("target" + ext) for ext in (".mp4", ".mov", ".m4v", ".avi", ".webm") if (folder / ("target" + ext)).is_file()), None)
+            if not ref or not driving or not target:
                 continue
             dcap = cv2.VideoCapture(str(driving))
             tcap = cv2.VideoCapture(str(target))

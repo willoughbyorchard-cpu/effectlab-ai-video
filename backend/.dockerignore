@@ -4,6 +4,7 @@
 .venv
 .git
 training-data/
+training-audit/
 weights/
 *.mp4
 *.mov

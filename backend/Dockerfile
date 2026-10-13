@@ -14,6 +14,7 @@ WORKDIR /app
 COPY app.py /app/app.py
 COPY scratch_model.py /app/scratch_model.py
 COPY train_scratch.py /app/train_scratch.py
+COPY prepare_data.py /app/prepare_data.py
 COPY tests /app/tests
 COPY static /app/static
 

@@ -31,6 +31,12 @@ training-data/
 
 driving.mp4 and target.mp4 must show the same action and camera timing; the target video must show the intended replacement identity and be a real training label, not a renamed copy of the source. Include many identities, clothes, body shapes, camera angles, lighting conditions and movements to generalise. One or two examples only test the code; they do not train a reliable AI. You must have permission to use all training footage.
 
+## Audit training data before training
+
+Run python prepare_data.py --data training-data --report training-audit. This utility uses OpenCV only; it does not use an AI model. It checks that each sequence has a reference photo, a driving video and a target video, compares frame counts/FPS/duration, rejects byte-identical driving/target files, and creates a side-by-side contact sheet at the start, middle and end. The training launcher runs this audit automatically before training.
+
+Open every contact sheet and check alignment manually. The automatic checks cannot establish that the target shows the same exact movement, camera path and timing. If it doesn't, training will learn a poor/blurred replacement.
+
 ## Train your own checkpoint
 
 Training is strongly recommended on a CUDA-capable NVIDIA GPU. CPU training is technically supported by PyTorch but is impractically slow for this video model.
