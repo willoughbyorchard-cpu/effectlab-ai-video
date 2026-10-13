@@ -3,3 +3,4 @@ uvicorn[standard]>=0.34.0,<1.0
 python-multipart>=0.0.20
 numpy>=1.26,<2.3
 opencv-python-headless>=4.10,<5
+fal-client>=0.7.0,<1.0
