@@ -131,6 +131,7 @@ def _loss(predicted: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, 
 
 
 def main() -> None:
+    global HEIGHT, WIDTH, CLIP_FRAMES
     parser = argparse.ArgumentParser(description="Train EffectLab Scratch video AI from random initialisation.")
     parser.add_argument("--data", required=True, help="Folder containing aligned sequence subfolders.")
     parser.add_argument("--output", default="weights/effectlab_scratch.pt")
@@ -148,7 +149,6 @@ def main() -> None:
     if args.epochs < 1 or args.batch_size < 1:
         parser.error("--epochs and --batch-size must be positive")
 
-    global HEIGHT, WIDTH, CLIP_FRAMES
     if args.height < 32 or args.width < 32 or args.height % 8 or args.width % 8:
         parser.error("--height and --width must be at least 32 and divisible by 8")
     if args.clip_frames < 1 or args.clip_frames > 8:
