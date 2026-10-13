@@ -82,7 +82,8 @@ async function render(){
  if(mode.object&&!objectFile)throw new Error('Upload a replacement object photo.');
  if(mode.object)throw new Error(mode.person?'The current model cannot yet replace a person and an object together. The object upload is saved in this page, but rendering both targets is not implemented, so no fake result was created.':'Object replacement is not implemented in the current EffectLab Scratch model yet. The photo is selected, but the model can only render person replacement.');
  if(!$('privacyConsent').checked)throw new Error('Confirm the file-processing notice before sending anything to your chosen engine.');
- const base='http://127.0.0.1:7860';\n $('generateBtn').disabled=true;$('generateBtn').textContent='Connecting to EffectLab…';$('result').hidden=true;
+ const base='http://127.0.0.1:7860';
+ $('generateBtn').disabled=true;$('generateBtn').textContent='Connecting to EffectLab…';$('result').hidden=true;
  try{
    status('Checking your EffectLab engine…');
    let healthResponse,health;
