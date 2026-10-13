@@ -2,5 +2,7 @@
 backend/training-data/
 backend/training-audit/
 backend/training-reports/
-backend/weights/
+backend/weights/*
+!backend/weights/README.md
+!backend/weights/effectlab_scratch.pt
 backend/.venv/

@@ -29,13 +29,13 @@ Each training sequence folder must contain all three items:
 
 reference.jpg is the identity photo, driving.mp4 is the original footage, and target.mp4 is the desired replacement already completed. Driving and target clips should show the same movement, background and camera position, with similar duration. Exact frame counts are not required: training maps target frames across relative clip progress. The automatic audit compares timing metadata and makes contact sheets, but a person must still inspect that the actions and camera framing genuinely match.
 
-The Training page can upload one ZIP, a directory selection, or multiple individual files using sequence subfolders. Uploaded media is sent to the local engine URL configured on the page and saved under backend/training-data/; it is not uploaded to GitHub Pages. The files and model checkpoint are excluded from Git.
+The Training page can upload one ZIP, a directory selection, or multiple individual files using sequence subfolders. Uploaded media is sent to the local engine URL configured on the page and saved under backend/training-data/; it is not uploaded to GitHub Pages. Training videos stay local and are excluded from Git. This repository now includes one explicitly experimental starter checkpoint in `backend/weights/effectlab_scratch.pt`; do not confuse it with a production-quality model.
 
 ## CPU-friendly model
 
 The initial laptop configuration uses 64 by 96 pixel frames, four-frame clips and eight base channels. This is intentionally small to reduce memory use on a 16 GB laptop. Training can still be slow. The network is trained from random initialization and may produce distorted frames, learn colour correlations, or fail to replace the identity at all. Ten examples can exercise the pipeline, but cannot guarantee a functional general-purpose swap model. A good general-purpose video model from scratch requires far more data, compute and architecture development.
 
-The training page defaults to 1 epoch and 20 steps to keep the first attempt bounded. Increase those settings only after the first run completes without memory or thermal issues. The saved checkpoint is backend/weights/effectlab_scratch.pt.
+The training page defaults to 1 epoch and 20 steps to keep the first attempt bounded. Increase those settings only after the first run completes without memory or thermal issues. The saved checkpoint is `backend/weights/effectlab_scratch.pt`. A small 1,070-step experimental checkpoint is included so the local renderer can be tested immediately; the checkpoint documentation in `backend/weights/README.md` describes how it was trained and its limits.
 
 ## Manual command
 
@@ -44,3 +44,8 @@ After installing dependencies and adding data, the following runs the same small
     python train_scratch.py --data training-data --output weights/effectlab_scratch.pt --epochs 1 --max-steps 20 --height 96 --width 64 --clip-frames 4 --base-channels 8
 
 The app reloads the checkpoint after training completes. Inference supports person replacement only; object replacement is not implemented. The model outputs low-resolution video and drops audio in the current renderer.
+
+
+## Included experimental body-swap checkpoint
+
+The repository includes a first-party checkpoint so the backend can load and render a rough demonstration without the user first running training. It has only been trained on one short matched example at 64 × 112 pixels and must not be described as a general-purpose or production-ready person replacement system. Review `weights/README.md` before use. GitHub Pages remains a static frontend and does not run model inference; start the local Python engine for actual rendering.
