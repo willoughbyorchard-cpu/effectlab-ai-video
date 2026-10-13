@@ -1,54 +1,45 @@
-# EffectLab Full-Body Engine
+# EffectLab — Local Full-Body Engine
 
-This folder contains the GPU backend that performs actual full-body character replacement for the EffectLab website. It tracks the source person's full-body pose, facial motion and mask, uses the reference character to condition Wan 2.2 Animate, and writes a generated MP4. It does not paste a cropped face on top of the source.
+This version does not call a public AI-rendering website. The browser interface and generation API are served together from your own machine at http://127.0.0.1:7860. Uploaded photos and source clips are submitted to that local API and the Wan 2.2 Animate pipeline runs on your machine's NVIDIA GPU.
 
-The public website runs on GitHub Pages, which cannot host a 14B video model. The backend runs separately on a GPU host.
+## First, check the hardware
 
-## Hardware and setup
+- Linux or Windows with WSL2 and Docker, a working NVIDIA driver, and Docker GPU support.
+- Wan 2.2 Animate is a 14B-parameter video model. Official deployments list very high GPU memory requirements; NVIDIA's support matrix lists 80 GB GPU memory as the minimum for Wan2.2-Animate-14B. The quantised ComfyUI pipeline here may use less, but it has not been validated on a 24 GB card. Integrated graphics and ordinary Mac hardware are not enough for this setup.
+- Tens of GB of free disk space for model weights, ComfyUI, dependencies and cache.
 
-- Linux with Docker and NVIDIA Container Toolkit; launch with --gpus all.
-- A GPU with 24 GB VRAM or more is a sensible starting target for this quantised model pipeline; exact needs vary and startup can still fail on incompatible drivers or dependencies.
-- Several tens of GB of free disk for model downloads and cache.
-- A public HTTPS address if the GitHub Pages website must connect to it.
-- A long private EFFECTLAB_API_KEY; never commit this key into the website or repository.
+Model reference: https://github.com/Wan-Video/Wan2.2 . NVIDIA deployment requirements: https://docs.nvidia.com/nim/visual-genai/latest/support-matrix.html
 
-The first start downloads model weights. This may take a considerable time. The weights are not included in the repository.
+## Run locally
 
-## Build
+1. Clone or download this repository onto the NVIDIA GPU computer.
+2. Open a terminal in the backend folder.
+3. Run docker build -t effectlab-engine . (the launch script does this the first time automatically).
+4. Run bash run-local.sh.
+5. Keep the terminal open. Open http://127.0.0.1:7860 in your browser. Copy the private API key printed in the terminal into the Local GPU engine settings and save it.
+6. Wait for model loading to complete. The health check in the settings will report readiness.
 
-From the backend directory:
+The script binds the service to 127.0.0.1 only; it is not exposed to your home network or the public internet. Do not change the port binding to 0.0.0.0 unless you understand the security implications.
 
-~~~bash
-docker build -t effectlab-engine .
-~~~
+## Fully local media use
 
-Run on the GPU host with a private key:
+The standalone local page does not load remote preview images or stock clips. Upload your own source MP4 in the optional source-video section for each effect and upload a full-body reference image. You may need to choose the source-video upload even if a trend card is selected. The local page contains the UI; there is no external inference/API call.
 
-~~~bash
-docker run --gpus all --rm -p 7860:7860 \
-  -e EFFECTLAB_API_KEY='replace-with-a-long-random-secret' \
-  -e EFFECTLAB_ALLOWED_ORIGINS='https://willoughbyorchard-cpu.github.io' \
-  -v effectlab-hf-cache:/root/.cache/huggingface \
-  effectlab-engine
-~~~
+## What downloads externally?
 
-Put the API behind an HTTPS reverse proxy before connecting the public website. Do not disable API key checks on an internet-facing GPU host.
+At first build, Docker downloads open-source runtime code and Python packages. On the first model startup, the backend downloads the published model weights and the required detection/segmentation weights into a local cache. Those downloads are model files, not user photos or videos. Subsequent runs reuse the cached weights. Once everything is downloaded, rendering itself can run with the machine offline if all dependencies and weights are present.
 
-## Connect to EffectLab
+This is self-hosted inference, not a model trained from scratch. The underlying pretrained Wan 2.2 Animate weights were released by the model authors. Reproducing their training process would require a large training dataset and far more compute. No user media is submitted to Hugging Face Spaces, an AI-rendering website, or an EffectLab cloud server in this local setup.
 
-Open a template and expand Connect your own EffectLab GPU engine. Enter the server's HTTPS base URL and the same key configured as EFFECTLAB_API_KEY. The URL is kept in local browser storage; the key is kept in the current tab's session storage. Leaving the URL blank continues to use the shared public renderer fallback.
+## API and security
 
-API:
+- GET /health — model status and visible GPU.
+- POST /api/jobs — local multipart input (reference photo, source clip, prompt, frame cap).
+- GET /api/jobs/{job_id} — progress.
+- GET /api/jobs/{job_id}/result — MP4 output.
 
-- GET /health reports model loading and GPU readiness.
-- POST /api/jobs accepts multipart image, video, frame_cap, prompt, and negative_prompt; requires Authorization: Bearer key.
-- GET /api/jobs/{job_id} reports progress.
-- GET /api/jobs/{job_id}/result returns the MP4.
+The local launch script generates a random API key and binds the service to localhost. The key is only held in the current browser tab. Input files are removed from the temporary job directory after processing; generated MP4s stay in temporary local storage until you delete them or remove the Docker volume.
 
-The defaults limit videos to 12 seconds, the render cap to 150 frames, upload sizes to 100 MB video and 24 MB image, and accepted jobs per source IP to four per hour. Jobs are serialised on a single GPU worker.
+## Limitations
 
-## What this is — and is not
-
-This service runs an inference pipeline around released Wan 2.2 Animate weights and ComfyUI's pose, face, video, and segmentation nodes. It is not a foundation model trained from scratch. Full-body video generation is computationally heavy. This repository does not include a GPU allocation, a deployed server, or private hosting credentials.
-
-Source uploads are removed from the job folder after processing; generated results remain in temporary job storage until the container/volume is cleared. Only submit images and footage you have permission to process.
+This code has passed Python/JavaScript syntax checks and is committed in the repository, but a real render has not been completed in this environment because it has no Docker runtime or GPU. The model pipeline may still need dependency or VRAM adjustments on a specific GPU. The GPU backend will reject startup if it cannot see a working NVIDIA GPU rather than downloading model weights onto an unsupported machine.

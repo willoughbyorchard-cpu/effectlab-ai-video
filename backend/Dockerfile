@@ -23,6 +23,7 @@ RUN if [ -f /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2/requirements.tx
 RUN python -m pip install -r /app-requirements.txt
 
 COPY app.py /app/app.py
+COPY static /app/static
 WORKDIR /app
 EXPOSE 7860
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860", "--proxy-headers", "--timeout-keep-alive", "300"]

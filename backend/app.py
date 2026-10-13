@@ -392,20 +392,23 @@ def _run_generation(job_id: str, image_path: str, video_path: str,
             video_out = _prepared(createvideo).EXECUTE_NORMALIZED(
                 fps=30, bit_depth="auto", color_space="sRGB", images=get_value_at_index(frames, 0),
             )
-            output_dir = Path(folder_paths.get_output_directory()) / "video"
+            output_root = Path(folder_paths.get_output_directory())
+            output_dir = output_root / "video"
             output_dir.mkdir(parents=True, exist_ok=True)
-            before = set(output_dir.iterdir())
+            before = {p.resolve() for p in output_root.rglob("*") if p.is_file()}
             _prepared(savevideo).EXECUTE_NORMALIZED(
-                filename_prefix=f"effectlab/{job_id}", format="auto", codec="auto",
+                filename_prefix=f"video/effectlab_{job_id}", format="auto", codec="auto",
                 video=get_value_at_index(video_out, 0),
             )
-            created = [p for p in output_dir.iterdir() if p not in before and p.is_file()]
+            created = [
+                p for p in output_root.rglob("*")
+                if p.is_file() and p.resolve() not in before and p.suffix.lower() in {".mp4", ".webm"}
+            ]
             if not created:
-                created = sorted((p for p in output_dir.iterdir() if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)[:1]
-            if not created:
-                raise RuntimeError("Wan Animate finished but no MP4 file was written.")
-            result_path = job_dir / "result.mp4"
-            shutil.copy2(max(created, key=lambda p: p.stat().st_mtime), result_path)
+                raise RuntimeError("Wan Animate finished but no new MP4/WebM output was written.")
+            output_file = max(created, key=lambda p: p.stat().st_mtime)
+            result_path = job_dir / ("result" + output_file.suffix.lower())
+            shutil.copy2(output_file, result_path)
         _update_job(job_id, status="complete", progress=1.0, message="Full-body replacement finished", result_path=str(result_path))
     except Exception as exc:
         _update_job(job_id, status="failed", message="Generation failed", error=f"{type(exc).__name__}: {exc}")
@@ -416,7 +419,7 @@ def _run_generation(job_id: str, image_path: str, video_path: str,
             except OSError:
                 pass
         for temporary in job_dir.iterdir() if job_dir.exists() else []:
-            if temporary.name == "result.mp4":
+            if temporary.name.startswith("result."):
                 continue
             try:
                 if temporary.is_file() or temporary.is_symlink():
@@ -433,8 +436,32 @@ def _run_generation(job_id: str, image_path: str, video_path: str,
             pass
 
 
+
+
+def _assert_nvidia_gpu() -> str:
+    try:
+        probe = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(
+            "No working NVIDIA GPU was detected. This is a local GPU service, not a cloud renderer. "
+            "Use an NVIDIA CUDA GPU host; integrated graphics and ordinary Mac laptops cannot run this Wan 2.2 Animate backend."
+        ) from exc
+    if probe.returncode != 0 or not probe.stdout.strip():
+        raise RuntimeError(
+            "nvidia-smi could not detect a usable NVIDIA GPU. No model weights were downloaded. "
+            "Install current NVIDIA drivers and Docker GPU support, then retry."
+        )
+    gpu_description = probe.stdout.strip().replace("\n", "; ")
+    print("[EffectLab] NVIDIA GPU detected: " + gpu_description, flush=True)
+    return gpu_description
+
+
 def _load_models() -> None:
     try:
+        _assert_nvidia_gpu()
         if not COMFYUI_PATH.exists():
             raise RuntimeError(f"ComfyUI is missing at {COMFYUI_PATH}. Use backend/Dockerfile to build this service.")
         _download_models()
@@ -444,6 +471,16 @@ def _load_models() -> None:
     except Exception as exc:
         STATE.update(ready=False, loading=False, error=f"{type(exc).__name__}: {exc}")
         print(f"[EffectLab] Engine startup failed: {STATE['error']}", flush=True)
+
+
+
+
+@app.get("/", include_in_schema=False)
+def serve_local_app() -> FileResponse:
+    page = Path(__file__).resolve().parent / "static" / "index.html"
+    if not page.is_file():
+        raise HTTPException(status_code=404, detail="EffectLab frontend file is missing from backend/static/index.html.")
+    return FileResponse(page, media_type="text/html; charset=utf-8")
 
 
 @app.on_event("startup")
@@ -574,4 +611,6 @@ def job_result(job_id: str, authorization: str | None = Header(default=None)) ->
         result = Path(job["result_path"])
     if not result.is_file():
         raise HTTPException(status_code=410, detail="This output has expired. Generate the video again.")
-    return FileResponse(result, media_type="video/mp4", filename="effectlab-full-body-swap.mp4")
+    media_type = "video/webm" if result.suffix.lower() == ".webm" else "video/mp4"
+    download_name = "effectlab-full-body-swap" + result.suffix.lower()
+    return FileResponse(result, media_type=media_type, filename=download_name)
