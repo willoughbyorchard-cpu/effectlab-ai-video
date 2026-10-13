@@ -7,15 +7,21 @@ created by train_scratch.py is present.
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import uuid
+import zipfile
+import tempfile
+import stat
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import cv2
@@ -30,19 +36,21 @@ from scratch_model import EffectLabScratchVideoAI
 APP_TITLE = "EffectLab Scratch — local video AI"
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_PAGE = BASE_DIR / "static" / "index.html"
-CHECKPOINT = Path(os.environ.get("EFFECTLAB_CHECKPOINT", "/app/weights/effectlab_scratch.pt"))
-WORK_ROOT = Path(os.environ.get("EFFECTLAB_WORK_ROOT", "/tmp/effectlab"))
+CHECKPOINT = Path(os.environ.get("EFFECTLAB_CHECKPOINT", str(BASE_DIR / "weights" / "effectlab_scratch.pt")))
+WORK_ROOT = Path(os.environ.get("EFFECTLAB_WORK_ROOT", str(Path(tempfile.gettempdir()) / "effectlab")))
+TRAINING_ROOT = Path(os.environ.get("EFFECTLAB_TRAINING_ROOT", str(BASE_DIR / "training-data")))
+TRAINING_ROOT.mkdir(parents=True, exist_ok=True)
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
-MODEL_HEIGHT = 192
-MODEL_WIDTH = 128
-CLIP_FRAMES = 8
+MODEL_HEIGHT = 96
+MODEL_WIDTH = 64
+CLIP_FRAMES = 4
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_VIDEO_BYTES = 80 * 1024 * 1024
 MAX_VIDEO_SECONDS = float(os.environ.get("EFFECTLAB_MAX_VIDEO_SECONDS", "8"))
 MAX_FRAMES = 150
 MAX_JOBS_PER_HOUR = 4
 
-app = FastAPI(title=APP_TITLE, version="0.3.0")
+app = FastAPI(title=APP_TITLE, version="0.4.0")
 _origins = [
     part.strip()
     for part in os.environ.get(
@@ -73,6 +81,12 @@ JOBS_LOCK = threading.RLock()
 RATE_LOCK = threading.Lock()
 REQUESTS_BY_IP: dict[str, list[float]] = {}
 GPU_QUEUE = ThreadPoolExecutor(max_workers=1, thread_name_prefix="effectlab-scratch")
+TRAINING_QUEUE = ThreadPoolExecutor(max_workers=1, thread_name_prefix="effectlab-training")
+TRAINING_JOBS: dict[str, dict[str, Any]] = {}
+TRAINING_JOBS_LOCK = threading.RLock()
+MAX_TRAINING_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+MAX_TRAINING_EXPANDED_BYTES = 4 * 1024 * 1024 * 1024
+MAX_TRAINING_FILES = 1000
 
 
 def _require_auth(authorization: str | None) -> None:
@@ -138,7 +152,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_model() -> None:
-    global MODEL
+    global MODEL, MODEL_HEIGHT, MODEL_WIDTH, CLIP_FRAMES
     try:
         if not CHECKPOINT.is_file():
             raise RuntimeError(
@@ -147,11 +161,16 @@ def _load_model() -> None:
                 "The network will not return random noise and call it a result."
             )
         checkpoint = torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
-        if checkpoint.get("model_name") != "EffectLabScratchVideoAI":
+        if checkpoint.get("model_name") != "EffectLabScratchVideoAI-CompactV2":
             raise RuntimeError("Checkpoint is not an EffectLab Scratch model.")
         if checkpoint.get("pretrained_model") is not None or not checkpoint.get("trained_from_random_initialisation"):
             raise RuntimeError("Only a Scratch checkpoint trained from random initialization is accepted.")
-        model = EffectLabScratchVideoAI()
+        config = checkpoint.get("config", {})
+        MODEL_HEIGHT = int(config.get("height", 96))
+        MODEL_WIDTH = int(config.get("width", 64))
+        CLIP_FRAMES = int(config.get("clip_frames", 4))
+        base_channels = int(config.get("base_channels", 8))
+        model = EffectLabScratchVideoAI(base_channels=base_channels)
         model.load_state_dict(checkpoint["model_state"], strict=True)
         model.to(DEVICE)
         model.eval()
@@ -189,6 +208,14 @@ def serve_local_app() -> FileResponse:
     return FileResponse(STATIC_PAGE, media_type="text/html; charset=utf-8")
 
 
+@app.get("/train.html", include_in_schema=False)
+def serve_training_page() -> FileResponse:
+    page = BASE_DIR / "static" / "train.html"
+    if not page.is_file():
+        raise HTTPException(status_code=404, detail="Training page was not found in backend/static.")
+    return FileResponse(page, media_type="text/html; charset=utf-8")
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -203,6 +230,9 @@ def health() -> dict[str, Any]:
         "training_loss": STATE.get("training_loss"),
         "pretrained_ai_used": False,
         "external_inference_used": False,
+        "model_height": MODEL_HEIGHT,
+        "model_width": MODEL_WIDTH,
+        "clip_frames": CLIP_FRAMES,
     }
 
 
@@ -420,3 +450,333 @@ def job_result(job_id: str, authorization: str | None = Header(default=None)) ->
     if not path.is_file():
         raise HTTPException(status_code=410, detail="The local output file has expired.")
     return FileResponse(path, media_type="video/mp4", filename="effectlab-scratch-full-body.mp4")
+
+# ---------------------- local training page/API ----------------------
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".webm"}
+
+
+def _has_triplet(folder: Path) -> bool:
+    if not folder.is_dir():
+        return False
+    names = {p.name.lower() for p in folder.iterdir() if p.is_file()}
+    has_ref = any("reference" + ext in names for ext in IMAGE_EXTENSIONS)
+    has_driving = any("driving" + ext in names for ext in VIDEO_EXTENSIONS)
+    has_target = any("target" + ext in names for ext in VIDEO_EXTENSIONS)
+    return has_ref and has_driving and has_target
+
+
+def _complete_sequence_dirs(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted((child for child in root.iterdir() if child.is_dir() and _has_triplet(child)), key=lambda p: p.name)
+
+
+def _safe_relative_path(raw: str) -> Path:
+    normalised = (raw or "").replace("\\", "/")
+    rel = PurePosixPath(normalised)
+    if not normalised or rel.is_absolute() or any(part in {"", ".", ".."} for part in rel.parts):
+        raise ValueError("Unsafe or empty upload path.")
+    if any(":" in part for part in rel.parts):
+        raise ValueError("Drive-qualified paths are not allowed in dataset uploads.")
+    return Path(*rel.parts)
+
+
+def _group_flat_sequence_files(root: Path) -> None:
+    pattern = re.compile(r"^(?P<sequence>.+?)[_-](?P<kind>reference|driving|target)(?P<ext>\.[^.]+)$", re.IGNORECASE)
+    for item in list(root.iterdir()) if root.is_dir() else []:
+        if not item.is_file():
+            continue
+        match = pattern.match(item.name)
+        if not match:
+            continue
+        kind = match.group("kind").lower()
+        extension = match.group("ext").lower()
+        if kind == "reference" and extension not in IMAGE_EXTENSIONS:
+            continue
+        if kind in {"driving", "target"} and extension not in VIDEO_EXTENSIONS:
+            continue
+        seq_name = re.sub(r"[^A-Za-z0-9_-]+", "_", match.group("sequence")).strip("_") or "sequence"
+        seq_dir = root / seq_name
+        seq_dir.mkdir(parents=True, exist_ok=True)
+        destination = seq_dir / (kind + extension)
+        if not destination.exists():
+            shutil.move(str(item), str(destination))
+
+
+def _find_dataset_root(payload_root: Path) -> Path | None:
+    _group_flat_sequence_files(payload_root)
+    if _complete_sequence_dirs(payload_root):
+        return payload_root
+    if _has_triplet(payload_root):
+        seq = payload_root / "sequence_0001"
+        seq.mkdir(parents=True, exist_ok=True)
+        for item in list(payload_root.iterdir()):
+            if item == seq:
+                continue
+            if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS:
+                kind = item.stem.lower()
+                if kind in {"reference", "driving", "target"}:
+                    shutil.move(str(item), str(seq / item.name))
+        return payload_root if _complete_sequence_dirs(payload_root) else None
+    for current, dirs, _files in os.walk(payload_root):
+        candidate = Path(current)
+        if _complete_sequence_dirs(candidate):
+            return candidate
+    return None
+
+
+def _public_training_job(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": job["id"],
+        "status": job["status"],
+        "progress": job["progress"],
+        "message": job["message"],
+        "error": job.get("error"),
+        "logs": list(job.get("logs", []))[-45:],
+        "sequences": job.get("sequences", 0),
+        "updated_at": job.get("updated_at", job.get("created_at")),
+    }
+
+
+def _training_job_update(job_id: str, **values: Any) -> None:
+    with TRAINING_JOBS_LOCK:
+        job = TRAINING_JOBS.get(job_id)
+        if not job:
+            return
+        log_line = values.pop("log_line", None)
+        if log_line:
+            job.setdefault("logs", []).append(str(log_line)[:1000])
+            job["logs"] = job["logs"][-100:]
+        job.update(values)
+        job["updated_at"] = time.time()
+
+
+@app.get("/api/training/dataset")
+def training_dataset_status(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_auth(authorization)
+    sequences = _complete_sequence_dirs(TRAINING_ROOT)
+    return {
+        "sequences": len(sequences),
+        "names": [p.name for p in sequences],
+        "dataset_root": str(TRAINING_ROOT),
+        "local_only": True,
+    }
+
+
+@app.post("/api/training/upload")
+async def upload_training_dataset(
+    files: list[UploadFile] = File(default=[]),
+    dataset_zip: UploadFile | None = File(default=None),
+    paths: str = Form(default=""),
+    replace_existing: bool = Form(default=False),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_auth(authorization)
+    if not files and dataset_zip is None:
+        raise HTTPException(status_code=400, detail="Select a training-data folder, files or a ZIP.")
+    if len(files) > MAX_TRAINING_FILES:
+        raise HTTPException(status_code=413, detail=f"Select no more than {MAX_TRAINING_FILES} files at once.")
+    temp_root = WORK_ROOT / ("training-upload-" + uuid.uuid4().hex)
+    temp_root.mkdir(parents=True, exist_ok=False)
+    payload_roots: list[Path] = []
+    total_bytes = 0
+    files_written = 0
+    try:
+        if dataset_zip is not None:
+            zip_path = temp_root / "dataset.zip"
+            with zip_path.open("wb") as out:
+                while True:
+                    chunk = await dataset_zip.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_TRAINING_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail="Training upload exceeds 2 GB.")
+                    out.write(chunk)
+            if not zipfile.is_zipfile(zip_path):
+                raise HTTPException(status_code=415, detail="The selected dataset file is not a valid ZIP archive.")
+            unpacked = temp_root / "unzipped"
+            unpacked.mkdir()
+            try:
+                with zipfile.ZipFile(zip_path) as archive:
+                    infos = [info for info in archive.infolist() if not info.is_dir()]
+                    if len(infos) > MAX_TRAINING_FILES:
+                        raise HTTPException(status_code=413, detail="ZIP contains too many files.")
+                    expanded = sum(max(0, info.file_size) for info in infos)
+                    if expanded > MAX_TRAINING_EXPANDED_BYTES:
+                        raise HTTPException(status_code=413, detail="Expanded ZIP data exceeds 4 GB.")
+                    for info in infos:
+                        relative = _safe_relative_path(info.filename)
+                        if stat.S_ISLNK(info.external_attr >> 16):
+                            raise HTTPException(status_code=400, detail="ZIP symlinks are not allowed.")
+                        dest = unpacked / relative
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.open(info, "r") as src, dest.open("wb") as dst:
+                            shutil.copyfileobj(src, dst, length=1024 * 1024)
+                        files_written += 1
+            except (zipfile.BadZipFile, OSError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=f"Could not safely extract dataset ZIP: {exc}") from exc
+            payload_roots.append(unpacked)
+
+        if files:
+            try:
+                path_list = json.loads(paths) if paths else []
+                if not isinstance(path_list, list):
+                    path_list = []
+            except json.JSONDecodeError:
+                path_list = []
+            files_root = temp_root / "selected-files"
+            files_root.mkdir()
+            seen: set[str] = set()
+            for idx, uploaded in enumerate(files):
+                raw_name = path_list[idx] if idx < len(path_list) and isinstance(path_list[idx], str) else (uploaded.filename or "")
+                try:
+                    relative = _safe_relative_path(raw_name)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=f"Invalid upload file path: {exc}") from exc
+                rel_key = relative.as_posix().lower()
+                if rel_key in seen:
+                    raise HTTPException(status_code=400, detail="Duplicate relative file paths detected in the upload.")
+                seen.add(rel_key)
+                dest = files_root / relative
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with dest.open("wb") as out:
+                    while True:
+                        chunk = await uploaded.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        total_bytes += len(chunk)
+                        if total_bytes > MAX_TRAINING_UPLOAD_BYTES:
+                            raise HTTPException(status_code=413, detail="Training upload exceeds 2 GB.")
+                        out.write(chunk)
+                files_written += 1
+            payload_roots.append(files_root)
+
+        dataset_sources: list[Path] = []
+        for payload_root in payload_roots:
+            found = _find_dataset_root(payload_root)
+            if found:
+                dataset_sources.append(found)
+        if not dataset_sources:
+            raise HTTPException(
+                status_code=400,
+                detail="No complete sequences found. Each sequence folder needs reference.jpg, driving.mp4 and target.mp4. ZIPs or folder uploads must preserve sequence subfolders.",
+            )
+
+        if replace_existing:
+            for child in TRAINING_ROOT.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+        TRAINING_ROOT.mkdir(parents=True, exist_ok=True)
+        for source_root in dataset_sources:
+            for seq in _complete_sequence_dirs(source_root):
+                shutil.copytree(seq, TRAINING_ROOT / seq.name, dirs_exist_ok=True)
+
+        sequences = _complete_sequence_dirs(TRAINING_ROOT)
+        if not sequences:
+            raise HTTPException(status_code=400, detail="Uploaded files did not create any complete training sequences.")
+        return {
+            "ok": True,
+            "sequences": len(sequences),
+            "files_written": files_written,
+            "sequence_names": [seq.name for seq in sequences],
+            "dataset_root": str(TRAINING_ROOT),
+            "message": "Training files were saved on this computer, ready for audit and training.",
+        }
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def _run_training_job(job_id: str, epochs: int, max_steps: int) -> None:
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    try:
+        _training_job_update(job_id, status="processing", progress=0.01, message="Auditing videos, frame counts and timing", log_line="Starting local dataset audit.")
+        audit_dir = WORK_ROOT / "training-audit"
+        audit = subprocess.run(
+            [sys.executable, str(BASE_DIR / "prepare_data.py"), "--data", str(TRAINING_ROOT), "--report", str(audit_dir), "--min-valid-sequences", "1"],
+            cwd=str(BASE_DIR), env=env, capture_output=True, text=True, timeout=900,
+        )
+        for line in (audit.stdout + "\n" + audit.stderr).splitlines():
+            if line.strip():
+                _training_job_update(job_id, log_line=line.strip())
+        if audit.returncode != 0:
+            raise RuntimeError("Training-data audit failed. Review the log: clips must be synchronised and target.mp4 must show the replacement.")
+        sequence_count = len(_complete_sequence_dirs(TRAINING_ROOT))
+        _training_job_update(job_id, progress=0.08, message=f"Dataset audit passed for {sequence_count} sequence(s). Starting CPU-friendly training.", sequences=sequence_count)
+        command = [
+            sys.executable, str(BASE_DIR / "train_scratch.py"),
+            "--data", str(TRAINING_ROOT), "--output", str(CHECKPOINT),
+            "--epochs", str(epochs), "--batch-size", "1", "--max-steps", str(max_steps),
+            "--height", "96", "--width", "64", "--clip-frames", "4", "--base-channels", "8",
+        ]
+        proc = subprocess.Popen(
+            command, cwd=str(BASE_DIR), env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
+        )
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                clean = line.rstrip()
+                if clean:
+                    step_match = re.search(r"\bstep=(\d+)", clean)
+                    progress = None
+                    if step_match:
+                        progress = min(0.94, 0.08 + 0.84 * int(step_match.group(1)) / max(max_steps, 1))
+                    _training_job_update(job_id, status="processing", message=clean[:500], progress=progress, log_line=clean)
+        code = proc.wait()
+        if code != 0:
+            raise RuntimeError(f"Training process exited with code {code}. Inspect the training log above.")
+        if not CHECKPOINT.is_file() or CHECKPOINT.stat().st_size < 1000:
+            raise RuntimeError("Training exited without producing a model checkpoint.")
+        _training_job_update(job_id, status="processing", progress=0.96, message="Training finished. Loading the new checkpoint into EffectLab.")
+        _load_model()
+        if not STATE.get("ready"):
+            raise RuntimeError("Checkpoint was saved but the local renderer could not load it: " + str(STATE.get("error")))
+        _training_job_update(job_id, status="complete", progress=1.0, message="Training run finished and the checkpoint is loaded. Test a swap; quality is not guaranteed.", log_line=f"Saved checkpoint: {CHECKPOINT}")
+    except Exception as exc:
+        _training_job_update(job_id, status="failed", message="Training failed", error=f"{type(exc).__name__}: {exc}", log_line=f"ERROR: {type(exc).__name__}: {exc}")
+
+
+@app.post("/api/training/start")
+def start_training(
+    epochs: int = Form(1),
+    max_steps: int = Form(20),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_auth(authorization)
+    if epochs < 1 or epochs > 20:
+        raise HTTPException(status_code=400, detail="Epochs must be between 1 and 20.")
+    if max_steps < 1 or max_steps > 2000:
+        raise HTTPException(status_code=400, detail="Maximum steps must be between 1 and 2000.")
+    sequences = _complete_sequence_dirs(TRAINING_ROOT)
+    if not sequences:
+        raise HTTPException(status_code=400, detail="Upload a complete training dataset first.")
+    with TRAINING_JOBS_LOCK:
+        if any(job["status"] in {"queued", "processing"} for job in TRAINING_JOBS.values()):
+            raise HTTPException(status_code=409, detail="A training run is already active.")
+        job_id = uuid.uuid4().hex
+        job = {
+            "id": job_id, "status": "queued", "progress": 0.0,
+            "message": "Queued on this computer", "error": None,
+            "logs": [], "sequences": len(sequences),
+            "created_at": time.time(), "updated_at": time.time(),
+        }
+        TRAINING_JOBS[job_id] = job
+    TRAINING_QUEUE.submit(_run_training_job, job_id, epochs, max_steps)
+    return _public_training_job(job)
+
+
+@app.get("/api/training/jobs/{job_id}")
+def training_job_status(job_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_auth(authorization)
+    with TRAINING_JOBS_LOCK:
+        job = TRAINING_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Local training job not found.")
+        return _public_training_job(job)
+
+

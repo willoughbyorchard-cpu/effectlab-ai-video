@@ -1,75 +1,46 @@
-# EffectLab Scratch — original AI video model
+# EffectLab Scratch — laptop training and local inference
 
-EffectLab Scratch is a first-party, train-from-random-initialisation video network. It does not load Wan, ComfyUI, Hugging Face checkpoints, pretrained feature extractors, or hosted AI inference APIs. The model architecture is in scratch_model.py; training code is in train_scratch.py; local inference and its API are in app.py.
+EffectLab Scratch is an original neural network trained from random weights. It does not load a pretrained generator and does not call a hosted AI renderer. The project now includes a compact, low-resolution configuration intended to make CPU training attempts possible on ordinary laptops. That is a capability test, not a promise of good replacement quality.
 
-IMPORTANT: this repository contains model code, not a trained model checkpoint. It cannot perform convincing full-body replacement until trained on suitable examples. Random weights are not a working AI.
+## Windows setup
 
-## What the network does
+1. Install Python 3.11 or 3.12 from python.org.
+2. Open PowerShell in the backend folder.
+3. Run Set-ExecutionPolicy -Scope Process Bypass and then .\setup-laptop.ps1.
+4. Run .\run-local.ps1. Keep the terminal open and copy the private API key it prints.
+5. Open http://127.0.0.1:7860/train.html in your browser and paste the API key.
+6. Select a dataset ZIP or the full training-data folder, upload it, then start with 1 epoch and 20 steps.
 
-- Encodes the entire reference photo into trainable appearance features.
-- Encodes a short source-video clip using 3D convolutions to learn motion and scene context.
-- Fuses reference appearance features into the temporal network at multiple resolutions.
-- Decodes a replacement video clip, using temporal and image losses during training.
+No NVIDIA GPU or Docker is required by the native laptop path. The setup uses the CPU build of PyTorch. Mac/Linux users can run bash setup-laptop.sh, then bash run-local.sh.
 
-Every AI layer starts from random initialisation. The inference server checks checkpoint metadata and refuses to render if there is no trained EffectLab Scratch checkpoint.
+## Expected data layout
 
-## The hard part is the training data
+Each training sequence folder must contain all three items:
 
-To teach a model to replace the person rather than paste a face on top, training requires aligned examples of what a correct replacement looks like. Each training sequence folder needs:
+    training-data/
+      sequence_0001/
+        reference.jpg
+        driving.mp4
+        target.mp4
+      sequence_0002/
+        reference.jpg
+        driving.mp4
+        target.mp4
 
-~~~text
-training-data/
-  sequence_0001/
-    reference.jpg   # full-body photo of the identity to render
-    driving.mp4     # source person's movement and scene
-    target.mp4      # desired person in that movement, aligned frame-for-frame
-  sequence_0002/
-    reference.jpg
-    driving.mp4
-    target.mp4
-~~~
+reference.jpg is the identity photo, driving.mp4 is the original footage, and target.mp4 is the desired replacement already completed. Driving and target clips should show the same movement, background and camera position, with similar duration. Exact frame counts are not required: training maps target frames across relative clip progress. The automatic audit compares timing metadata and makes contact sheets, but a person must still inspect that the actions and camera framing genuinely match.
 
-driving.mp4 and target.mp4 must show the same action and camera timing; the target video must show the intended replacement identity and be a real training label, not a renamed copy of the source. Include many identities, clothes, body shapes, camera angles, lighting conditions and movements to generalise. One or two examples only test the code; they do not train a reliable AI. You must have permission to use all training footage.
+The Training page can upload one ZIP, a directory selection, or multiple individual files using sequence subfolders. Uploaded media is sent to the local engine URL configured on the page and saved under backend/training-data/; it is not uploaded to GitHub Pages. The files and model checkpoint are excluded from Git.
 
-## Audit training data before training
+## CPU-friendly model
 
-Run python prepare_data.py --data training-data --report training-audit. This utility uses OpenCV only; it does not use an AI model. It checks that each sequence has a reference photo, a driving video and a target video, compares frame counts/FPS/duration, rejects byte-identical driving/target files, and creates a side-by-side contact sheet at the start, middle and end. The training launcher runs this audit automatically before training.
+The initial laptop configuration uses 64 by 96 pixel frames, four-frame clips and eight base channels. This is intentionally small to reduce memory use on a 16 GB laptop. Training can still be slow. The network is trained from random initialization and may produce distorted frames, learn colour correlations, or fail to replace the identity at all. Ten examples can exercise the pipeline, but cannot guarantee a functional general-purpose swap model. A good general-purpose video model from scratch requires far more data, compute and architecture development.
 
-Open every contact sheet and check alignment manually. The automatic checks cannot establish that the target shows the same exact movement, camera path and timing. If it doesn't, training will learn a poor/blurred replacement.
+The training page defaults to 1 epoch and 20 steps to keep the first attempt bounded. Increase those settings only after the first run completes without memory or thermal issues. The saved checkpoint is backend/weights/effectlab_scratch.pt.
 
-## Train your own checkpoint
+## Manual command
 
-Training is strongly recommended on a CUDA-capable NVIDIA GPU. CPU training is technically supported by PyTorch but is impractically slow for this video model.
+After installing dependencies and adding data, the following runs the same small experiment:
 
-1. Put aligned sequence folders in backend/training-data/, or set the DATA_DIR environment variable to your dataset path.
-2. Open a terminal in backend/ and run ./train-model.sh.
-3. Set EPOCHS=100 BATCH_SIZE=1 ./train-model.sh to change training settings. Training starts from random weights and saves effectlab_scratch.pt in the Docker volume effectlab-model-weights.
-4. After training, run ./run-local.sh and open http://127.0.0.1:7860.
-5. The launch script prints a private API key; paste it into the local page's engine settings. Check engine health before generating.
+    python train_scratch.py --data training-data --output weights/effectlab_scratch.pt --epochs 1 --max-steps 20 --height 96 --width 64 --clip-frames 4 --base-channels 8
 
-Training command implemented by the script:
-
-~~~bash
-docker run --rm --gpus all -v /path/to/training-data:/data:ro -v effectlab-model-weights:/app/weights effectlab-scratch python /app/train_scratch.py --data /data --output /app/weights/effectlab_scratch.pt --epochs 100 --batch-size 1
-~~~
-
-## Local generation
-
-./run-local.sh builds the app image and serves the bundled UI and API at http://127.0.0.1:7860. The server binds to localhost only. It does not upload photos/videos to any public rendering website or external AI API. It loads only the checkpoint you trained yourself.
-
-At build time Docker downloads the base runtime and ordinary software packages (PyTorch is the tensor/training framework, not a pretrained generator). No AI model weights are downloaded. After software dependencies and your model are available locally, inference itself works offline.
-
-Inputs are limited to a 20 MB reference image, 80 MB source video, 8 seconds duration and 150 frames. Model resolution is 128×192 in this prototype, so output detail is low; it is not a finished commercial-quality system. Improve resolution/architecture and train on a substantial dataset before expecting convincing performance.
-
-## API
-
-- GET /health reports whether a trained checkpoint is loaded.
-- POST /api/jobs accepts a reference image plus driving video.
-- GET /api/jobs/{job_id} reports inference progress.
-- GET /api/jobs/{job_id}/result returns the generated MP4.
-
-Only localhost is exposed by the default launcher. The service uses a random API key and stores temporary render files locally.
-
-## Current status
-
-The original architecture, training loop, local inference API, local frontend and launch scripts are implemented. Python/JavaScript/shell syntax checks pass; the model smoke tests in backend/tests check tensor shapes, output range and gradient flow. A trained checkpoint and real full-body test video are not included because no aligned training dataset or GPU was available in this coding session. This is an honest first-party AI training project, not yet a working trained character replacement model.
+The app reloads the checkpoint after training completes. Inference supports person replacement only; object replacement is not implemented. The model outputs low-resolution video and drops audio in the current renderer.

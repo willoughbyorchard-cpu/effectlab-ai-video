@@ -1,0 +1,6 @@
+# Local training data, models and Python environments
+backend/training-data/
+backend/training-audit/
+backend/training-reports/
+backend/weights/
+backend/.venv/

@@ -1,7 +1,8 @@
-"""EffectLab Scratch: an original, uninitialised reference-conditioned video network.
+"""Compact first-party video model for laptop-scale CPU experiments.
 
-No pretrained checkpoints, model hubs, remote APIs, or imported AI model definitions.
-The network has to be trained on aligned person-replacement examples before inference.
+This model is randomly initialised. It does not download pretrained weights or
+call any hosted AI service. Expect very limited results until substantial,
+well-aligned replacement data has been collected and training is evaluated.
 """
 from __future__ import annotations
 
@@ -11,22 +12,19 @@ from torch.nn import functional as F
 
 
 def _groups(channels: int) -> int:
-    for groups in (8, 4, 2, 1):
-        if channels % groups == 0:
-            return groups
+    for candidate in (8, 4, 2, 1):
+        if channels % candidate == 0:
+            return candidate
     return 1
 
 
 class ResBlock2D(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
-        groups = _groups(channels)
         self.net = nn.Sequential(
-            nn.GroupNorm(groups, channels),
-            nn.SiLU(),
+            nn.GroupNorm(_groups(channels), channels), nn.SiLU(),
             nn.Conv2d(channels, channels, 3, padding=1),
-            nn.GroupNorm(groups, channels),
-            nn.SiLU(),
+            nn.GroupNorm(_groups(channels), channels), nn.SiLU(),
             nn.Conv2d(channels, channels, 3, padding=1),
         )
 
@@ -37,13 +35,10 @@ class ResBlock2D(nn.Module):
 class ResBlock3D(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
-        groups = _groups(channels)
         self.net = nn.Sequential(
-            nn.GroupNorm(groups, channels),
-            nn.SiLU(),
+            nn.GroupNorm(_groups(channels), channels), nn.SiLU(),
             nn.Conv3d(channels, channels, 3, padding=1),
-            nn.GroupNorm(groups, channels),
-            nn.SiLU(),
+            nn.GroupNorm(_groups(channels), channels), nn.SiLU(),
             nn.Conv3d(channels, channels, 3, padding=1),
         )
 
@@ -52,48 +47,35 @@ class ResBlock3D(nn.Module):
 
 
 class ReferenceEncoder(nn.Module):
-    """Learn appearance features directly from the supplied full-body photo."""
-    def __init__(self):
+    """Learn appearance features from the supplied reference photo."""
+    def __init__(self, base: int):
         super().__init__()
-        self.stem = nn.Sequential(nn.Conv2d(3, 32, 3, padding=1), ResBlock2D(32))
-        self.level1 = nn.Sequential(
-            nn.Conv2d(32, 64, 3, stride=2, padding=1), ResBlock2D(64)
-        )
-        self.level2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, stride=2, padding=1), ResBlock2D(128)
-        )
-        self.level3 = nn.Sequential(
-            nn.Conv2d(128, 192, 3, stride=2, padding=1), ResBlock2D(192)
-        )
+        self.stem = nn.Sequential(nn.Conv2d(3, base, 3, padding=1), ResBlock2D(base))
+        self.level1 = nn.Sequential(nn.Conv2d(base, base * 2, 3, stride=2, padding=1), ResBlock2D(base * 2))
+        self.level2 = nn.Sequential(nn.Conv2d(base * 2, base * 4, 3, stride=2, padding=1), ResBlock2D(base * 4))
+        self.level3 = nn.Sequential(nn.Conv2d(base * 4, base * 6, 3, stride=2, padding=1), ResBlock2D(base * 6))
 
     def forward(self, image: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        f0 = self.stem(image)
-        f1 = self.level1(f0)
-        f2 = self.level2(f1)
-        f3 = self.level3(f2)
-        return f0, f1, f2, f3
+        r0 = self.stem(image)
+        r1 = self.level1(r0)
+        r2 = self.level2(r1)
+        r3 = self.level3(r2)
+        return r0, r1, r2, r3
 
 
 class ReferenceFusion(nn.Module):
-    """Inject learned identity/wardrobe features into every driving-video frame."""
     def __init__(self, channels: int):
         super().__init__()
         self.mix = nn.Sequential(
             nn.Conv3d(channels * 2, channels, 1),
-            ResBlock3D(channels),
-        )
-        self.affine = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(channels, channels * 2, 1),
+            nn.GroupNorm(_groups(channels), channels),
+            nn.SiLU(),
         )
 
     def forward(self, video: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
-        batch, _, frames, _, _ = video.shape
-        # Reference appearance map is broadcast in time, not pasted over the video.
-        appearance = reference.unsqueeze(2).expand(-1, -1, frames, -1, -1)
-        scale, shift = self.affine(reference).chunk(2, dim=1)
-        modulated = video * (1 + scale.unsqueeze(2)) + shift.unsqueeze(2)
-        return self.mix(torch.cat((modulated, appearance), dim=1))
+        reference = F.interpolate(reference, size=video.shape[-2:], mode="bilinear", align_corners=False)
+        reference = reference.unsqueeze(2).expand(-1, -1, video.shape[2], -1, -1)
+        return video + self.mix(torch.cat((video, reference), dim=1)) * 0.5
 
 
 class UpBlock3D(nn.Module):
@@ -102,68 +84,58 @@ class UpBlock3D(nn.Module):
         self.mix = nn.Sequential(
             nn.Conv3d(in_channels + skip_channels, out_channels, 3, padding=1),
             ResBlock3D(out_channels),
-            ResBlock3D(out_channels),
         )
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
         x = F.interpolate(
-            x, size=(skip.shape[2], skip.shape[3], skip.shape[4]),
+            x, size=(x.shape[2], skip.shape[3], skip.shape[4]),
             mode="trilinear", align_corners=False,
         )
         return self.mix(torch.cat((x, skip), dim=1))
 
 
 class EffectLabScratchVideoAI(nn.Module):
-    """Train-from-zero full-frame person replacement network.
+    """Small reference-conditioned spatiotemporal network trained from zero.
 
-    Inputs:
-      reference: (B,3,H,W), full-body photo of the identity to render
-      driving:   (B,3,T,H,W), source video whose movement/camera to follow
-    Output:
-      generated: (B,3,T,H,W), RGB video in [0,1]
-
-    This architecture starts from random weights. It is not useful for real
-    replacement until trained on aligned reference/driving/target-video triples.
+    The defaults intentionally reduce memory use for CPU experiments. It is
+    a research prototype, not a pretrained or production-quality swap model.
     """
-    def __init__(self, base_channels: int = 32):
+    def __init__(self, base_channels: int = 8):
         super().__init__()
-        if base_channels != 32:
-            raise ValueError("This checkpoint format currently expects base_channels=32.")
-        self.reference_encoder = ReferenceEncoder()
-        self.video_stem = nn.Conv3d(3, 32, 3, padding=1)
-        self.fuse0 = ReferenceFusion(32)
-        self.enc0 = ResBlock3D(32)
-        self.down1 = nn.Conv3d(32, 64, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
-        self.fuse1 = ReferenceFusion(64)
-        self.enc1 = ResBlock3D(64)
-        self.down2 = nn.Conv3d(64, 128, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
-        self.fuse2 = ReferenceFusion(128)
-        self.enc2 = ResBlock3D(128)
-        self.down3 = nn.Conv3d(128, 192, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
-        self.fuse3 = ReferenceFusion(192)
-        self.mid = nn.Sequential(ResBlock3D(192), ResBlock3D(192))
-        self.up2 = UpBlock3D(192, 128, 128)
-        self.up1 = UpBlock3D(128, 64, 64)
-        self.up0 = UpBlock3D(64, 32, 32)
+        if base_channels < 4 or base_channels > 32:
+            raise ValueError("base_channels must be between 4 and 32.")
+        c = base_channels
+        self.base_channels = c
+        self.reference_encoder = ReferenceEncoder(c)
+        self.video_stem = nn.Conv3d(3, c, 3, padding=1)
+        self.fuse0 = ReferenceFusion(c)
+        self.enc0 = ResBlock3D(c)
+        self.down1 = nn.Conv3d(c, c * 2, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
+        self.fuse1 = ReferenceFusion(c * 2)
+        self.enc1 = ResBlock3D(c * 2)
+        self.down2 = nn.Conv3d(c * 2, c * 4, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
+        self.fuse2 = ReferenceFusion(c * 4)
+        self.enc2 = ResBlock3D(c * 4)
+        self.down3 = nn.Conv3d(c * 4, c * 6, (1, 4, 4), stride=(1, 2, 2), padding=(0, 1, 1))
+        self.fuse3 = ReferenceFusion(c * 6)
+        self.mid = ResBlock3D(c * 6)
+        self.up2 = UpBlock3D(c * 6, c * 4, c * 4)
+        self.up1 = UpBlock3D(c * 4, c * 2, c * 2)
+        self.up0 = UpBlock3D(c * 2, c, c)
         self.output = nn.Sequential(
-            nn.GroupNorm(_groups(32), 32),
-            nn.SiLU(),
-            nn.Conv3d(32, 3, 3, padding=1),
-            nn.Sigmoid(),
+            nn.GroupNorm(_groups(c), c), nn.SiLU(),
+            nn.Conv3d(c, 3, 3, padding=1), nn.Sigmoid(),
         )
 
     def forward(self, reference: torch.Tensor, driving: torch.Tensor) -> torch.Tensor:
         if reference.ndim != 4 or driving.ndim != 5:
             raise ValueError("Expected reference [B,3,H,W] and driving [B,3,T,H,W].")
-        if reference.shape[0] != driving.shape[0]:
-            raise ValueError("Reference and driving batch sizes do not match.")
-        if reference.shape[1] != 3 or driving.shape[1] != 3:
-            raise ValueError("Inputs must be RGB tensors.")
+        if reference.shape[0] != driving.shape[0] or reference.shape[1] != 3 or driving.shape[1] != 3:
+            raise ValueError("Reference and driving must share a batch size and use RGB channels.")
         if reference.shape[-2:] != driving.shape[-2:]:
             raise ValueError("Reference and driving frames must have the same dimensions.")
         if reference.shape[-2] % 8 or reference.shape[-1] % 8:
             raise ValueError("Image height and width must be divisible by 8.")
-
         r0, r1, r2, r3 = self.reference_encoder(reference)
         x0 = self.enc0(self.fuse0(self.video_stem(driving), r0))
         x1 = self.enc1(self.fuse1(self.down1(x0), r1))

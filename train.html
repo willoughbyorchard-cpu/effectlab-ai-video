@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0b10">
+<title>Train EffectLab AI</title>
+<meta name="description" content="Train the original EffectLab Scratch model locally with your own paired photos and videos.">
+<style>
+:root{--bg:#0b0b10;--panel:#14141e;--line:#302b3b;--muted:#aaa7ba;--text:#f8f7fc;--pink:#ff579e;--purple:#9c78ff;--green:#cfff79;--red:#ff9aa8}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 82% -10%,#542b7828,transparent 34%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input{font:inherit}button,a{cursor:pointer}.wrap{width:min(1050px,calc(100% - 32px));margin:auto}.nav{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ffffff14}.brand{font-size:19px;font-weight:900;letter-spacing:-.6px}.brand span{color:var(--pink)}.nav a{color:#d7c8ff;text-decoration:none;font-size:13px;font-weight:800}.hero{padding:42px 0 22px;max-width:820px}.eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#e1d3ff;font-weight:850}.hero h1{font-size:clamp(36px,6vw,60px);line-height:1.04;letter-spacing:-2.7px;margin:15px 0}.gradient{background:linear-gradient(100deg,#ff6bac,#a98bff 62%,#7bdcff);color:transparent;background-clip:text}.hero p{color:var(--muted);font-size:15px;line-height:1.7;max-width:720px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;align-items:start;padding:10px 0 42px}.panel{border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#ffffff07,#ffffff02);padding:20px;min-width:0}.wide{grid-column:1/-1}.head{display:flex;align-items:center;gap:12px;margin-bottom:13px}.num{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border:1px solid #a98bff44;border-radius:11px;color:#d9caff;background:#a98bff12;font-weight:900}.head h2{font-size:17px;margin:0}.head p{font-size:12px;color:var(--muted);margin:4px 0 0;line-height:1.5}.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;min-height:132px;padding:16px;border:1px dashed #615273;border-radius:13px;background:#ffffff04}.drop:hover{border-color:var(--purple);background:#9c78ff12}.drop .icon{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#a98bff18;color:#d9caff;font-size:20px}.drop strong{font-size:13px}.drop small{font-size:11px;line-height:1.5;color:var(--muted)}input[type=file]{display:block;width:100%;max-width:100%;margin-top:13px;color:var(--muted);font-size:12px}label.field{display:block;margin-top:15px;font-size:12px;font-weight:800;color:#e6dff1}input[type=url],input[type=password],input[type=number]{width:100%;margin-top:6px;padding:11px 12px;background:#08080d;color:white;border:1px solid #40374d;border-radius:9px;min-width:0}input[type=checkbox]{accent-color:#a98bff}.check{display:flex;gap:9px;align-items:flex-start;margin:14px 0;color:#d9d3e3;font-size:12px;line-height:1.55}.check input{margin-top:3px;flex:0 0 auto}.note{font-size:11px;line-height:1.65;color:#a7a1b5;margin-top:12px}.callout{padding:12px 14px;border:1px solid #9c78ff38;background:#9c78ff0b;border-radius:12px;color:#e2d8ff;font-size:12px;line-height:1.6}.primary{width:100%;border:0;border-radius:11px;background:linear-gradient(100deg,var(--pink),#955eff);color:white;padding:14px 17px;font-weight:850;margin-top:13px}.secondary{border:1px solid var(--line);border-radius:10px;background:#ffffff08;color:white;padding:10px 13px;font-weight:750}.primary:disabled,.secondary:disabled{opacity:.5;cursor:not-allowed}.status{font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;color:#ddd5ec;margin-top:12px}.status.good{color:var(--green)}.status.error{color:var(--red)}.bar{height:8px;background:#ffffff10;border-radius:9px;overflow:hidden;margin-top:12px}.bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--purple));transition:width .3s}.logs{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;background:#07070c;border:1px solid #ffffff12;border-radius:10px;padding:12px;font-size:10px;line-height:1.6;color:#c9c1d8}.badge{display:inline-block;font-size:10px;padding:5px 8px;border-radius:999px;border:1px solid #ffffff1e;color:#d7c8ff;margin-bottom:8px}.footer{border-top:1px solid #ffffff12;color:#898599;padding:22px 0 28px;font-size:11px;line-height:1.65}@media(max-width:720px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.panel{padding:16px}.hero{padding-top:34px}.hero h1{letter-spacing:-1.8px}}
+</style>
+</head>
+<body>
+<header class="wrap nav"><a href="index.html" class="brand"><span>✦</span> EffectLab AI</a><a href="index.html">← Back to video swap</a></header>
+<main class="wrap">
+<section class="hero">
+<div class="eyebrow">YOUR FOOTAGE · YOUR MODEL · LOCAL TRAINING</div>
+<h1>Teach your own AI.<br><span class="gradient">On your laptop.</span></h1>
+<p>Select a folder or ZIP containing your paired training examples, upload it to your own running EffectLab engine, then start a small training experiment. No third-party AI renderer, pretrained generator, or NVIDIA GPU is required for the compact CPU configuration.</p>
+<div class="callout"><strong>Be realistic about the result.</strong> This is a new, compact model trained from random weights. One or ten examples can test whether the code learns anything, but cannot guarantee a working or convincing person swap.</div>
+</section>
+<div class="grid">
+<section class="panel">
+<div class="head"><span class="num">01</span><div><h2>Select your training set</h2><p>Choose a folder or ZIP; no chat uploads needed.</p></div></div>
+<label class="drop" for="folderInput"><span class="icon">▣</span><strong>Choose the whole training-data folder</strong><small>The folder should contain one subfolder per example, each with a reference photo, original video and matching target video.</small></label>
+<input id="folderInput" type="file" webkitdirectory directory multiple>
+<label class="field" for="zipInput">Or choose a ZIP file</label>
+<input id="zipInput" type="file" accept=".zip,application/zip">
+<label class="field" for="filesInput">Or select individual files together</label>
+<input id="filesInput" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-msvideo">
+<div class="note">For individual files, keep the sequence folders when possible. Flat filenames should follow the pattern sequence_0001_reference.jpg, sequence_0001_driving.mp4 and sequence_0001_target.mp4. Dataset upload limit: 2 GB per upload.</div>
+<label class="check"><input id="replaceExisting" type="checkbox"><span>Replace the current training dataset on this laptop. Leave unchecked to merge/overwrite only matching sequence folders.</span></label>
+<button class="primary" id="uploadBtn" type="button">Upload training data to my laptop</button>
+<div class="status" id="uploadStatus" role="status" aria-live="polite">Choose files first. Data will be sent only to the EffectLab engine URL below.</div>
+</section>
+<section class="panel">
+<div class="head"><span class="num">02</span><div><h2>Connect your local engine</h2><p>Run the engine on the same computer that stores your data.</p></div></div>
+<label class="field" for="engineUrl">Local engine URL</label><input id="engineUrl" type="url" value="http://127.0.0.1:7860" autocomplete="url" spellcheck="false">
+<label class="field" for="engineKey">Private API key</label><input id="engineKey" type="password" placeholder="Copy from the run-local window" autocomplete="off">
+<button class="secondary" id="checkBtn" type="button" style="width:100%;margin-top:12px">Check local engine</button>
+<div class="status" id="engineStatus" role="status" aria-live="polite">The local engine must be running first. For best compatibility, open this page at http://127.0.0.1:7860/train.html.</div>
+<div class="note">The GitHub Pages version is only a website. It cannot train on GitHub's servers. This page talks to the local Python engine on your machine, which stores the training files and checkpoint on your disk.</div>
+</section>
+<section class="panel wide">
+<div class="head"><span class="num">03</span><div><h2>Start a small training run</h2><p>Start small; increase the work only after the pipeline has been tested.</p></div><span class="badge">CPU-friendly defaults</span></div>
+<div class="grid" style="padding:0;margin:0;grid-template-columns:1fr 1fr">
+<div><label class="field" for="epochs">Epochs</label><input id="epochs" type="number" min="1" max="20" value="1"><div class="note">One pass through the sampled clips. More is not automatically better.</div></div>
+<div><label class="field" for="maxSteps">Maximum training steps</label><input id="maxSteps" type="number" min="1" max="2000" value="20"><div class="note">Stops the first test from becoming unexpectedly large. Increase later if it runs comfortably.</div></div>
+</div>
+<button class="primary" id="trainBtn" type="button" disabled>Start training</button>
+<div class="bar" aria-label="Training progress"><span id="progress"></span></div>
+<div class="status" id="trainStatus" role="status" aria-live="polite">Upload a valid dataset, connect the engine, then training can start.</div>
+<pre class="logs" id="logs" hidden></pre>
+<div class="note">This compact experiment uses 64 × 96 pixel frames, four frames per clip and eight base channels. It writes a checkpoint locally. It may still be slow on a CPU and the resulting model may not perform a useful swap. Keep the laptop plugged in and stop if it becomes too hot.</div>
+</section>
+</div>
+</main>
+<footer class="wrap footer"><strong>EffectLab AI</strong><br>Training files stay on your computer when you use your local engine. Only use footage and likenesses you have permission to use. This prototype does not support object replacement.</footer>
+<script>
+(function(){
+const $=function(id){return document.getElementById(id);};
+let uploaded=false,activeJob=null,pollHandle=null,folderFiles=[];
+function setStatus(id,msg,kind){const el=$(id);el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
+function baseUrl(){const raw=$('engineUrl').value.trim().replace(/\/+$/,'');let u;try{u=new URL(raw);}catch(e){throw new Error('Enter a valid local engine URL.');}if(u.protocol!=='http:'&&u.protocol!=='https:')throw new Error('Use an HTTP or HTTPS engine URL.');return raw;}
+function authHeaders(){const key=$('engineKey').value.trim();if(!key)throw new Error('Paste the private API key printed by run-local.');return {'Authorization':'Bearer '+key,'Accept':'application/json'};}
+async function readJson(res){let t='';try{t=await res.text();return JSON.parse(t);}catch(e){return {detail:t||'The local engine returned an unreadable response.'};}}
+function selectedFiles(){const folder=Array.from($('folderInput').files||[]);const files=Array.from($('filesInput').files||[]);return folder.length?folder:files;}
+async function checkEngine(){
+ try{
+  const base=baseUrl();const headers=authHeaders();
+  setStatus('engineStatus','Connecting to '+base+'…');
+  const h=await fetch(base+'/health',{headers:{Accept:'application/json'}});const health=await readJson(h);
+  if(!h.ok)throw new Error(health.detail||('Health check failed, HTTP '+h.status));
+  const d=await fetch(base+'/api/training/dataset',{headers:headers});const dataset=await readJson(d);
+  if(!d.ok)throw new Error(dataset.detail||('Could not check dataset, HTTP '+d.status));
+  setStatus('engineStatus','Connected. Device: '+(health.device||'unknown')+'. Current model ready: '+(health.ready?'yes':'not trained yet')+'. Complete sequences saved locally: '+dataset.sequences+'.','good');
+  $('trainBtn').disabled=!(dataset.sequences>0);
+  uploaded=dataset.sequences>0;
+  return dataset;
+ }catch(e){uploaded=false;$('trainBtn').disabled=true;setStatus('engineStatus',e.message||String(e),'error');throw e;}
+}
+$('checkBtn').addEventListener('click',function(){checkEngine().catch(function(){});});
+$('folderInput').addEventListener('change',function(){const fs=Array.from(this.files||[]);$('uploadStatus').textContent=fs.length+' files selected from folder.';$('zipInput').value='';$('filesInput').value='';});
+$('filesInput').addEventListener('change',function(){const fs=Array.from(this.files||[]);$('uploadStatus').textContent=fs.length+' individual files selected.';$('zipInput').value='';$('folderInput').value='';});
+$('zipInput').addEventListener('change',function(){const f=this.files&&this.files[0];$('uploadStatus').textContent=f?f.name+' · '+(f.size/1048576).toFixed(1)+' MB selected.':'No ZIP selected.';$('folderInput').value='';$('filesInput').value='';});
+$('uploadBtn').addEventListener('click',async function(){
+ const zip=$('zipInput').files&&$('zipInput').files[0];const files=selectedFiles();
+ if(!zip&&!files.length){setStatus('uploadStatus','Choose your training folder, a ZIP, or individual files first.','error');return;}
+ const total=(zip?[zip.size]:files.map(function(f){return f.size;})).reduce(function(a,b){return a+b;},0);
+ if(total>2*1024*1024*1024){setStatus('uploadStatus','The selected upload is over 2 GB. Split it into smaller datasets.','error');return;}
+ let base,headers;try{base=baseUrl();headers=authHeaders();}catch(e){setStatus('uploadStatus',e.message,'error');return;}
+ const form=new FormData();if(zip)form.append('dataset_zip',zip,zip.name);
+ if(files.length){const paths=[];files.forEach(function(f){const rel=f.webkitRelativePath||f.name;paths.push(rel);form.append('files',f,rel);});form.append('paths',JSON.stringify(paths));}
+ form.append('replace_existing',$('replaceExisting').checked?'true':'false');
+ $('uploadBtn').disabled=true;setStatus('uploadStatus','Uploading selected files to the local engine. Large videos can take time…');
+ try{
+  const res=await fetch(base+'/api/training/upload',{method:'POST',headers:headers,body:form});const data=await readJson(res);
+  if(!res.ok)throw new Error(data.detail||('Upload failed, HTTP '+res.status));
+  uploaded=true;$('trainBtn').disabled=false;
+  setStatus('uploadStatus','Upload complete. '+data.sequences+' complete sequence(s) ready; '+data.files_written+' files stored on this laptop.','good');
+  await checkEngine();
+ }catch(e){setStatus('uploadStatus',e.message||String(e),'error');}
+ finally{$('uploadBtn').disabled=false;}
+});
+function showJob(job){if(!job)return;const pct=Math.max(0,Math.min(100,Math.round(Number(job.progress||0)*100)));$('progress').style.width=pct+'%';setStatus('trainStatus',(job.message||job.status||'Training')+' · '+pct+'%'+(job.error?'\n'+job.error:''),job.status==='complete'?'good':job.status==='failed'?'error':'');$('logs').hidden=false;$('logs').textContent=(job.logs||[]).join('\n');$('trainBtn').disabled=['queued','processing'].includes(job.status);if(job.status==='complete'||job.status==='failed'){activeJob=null;checkEngine().catch(function(){});}}
+async function pollJob(jobId){
+ const base=baseUrl();const headers=authHeaders();
+ try{const res=await fetch(base+'/api/training/jobs/'+encodeURIComponent(jobId),{headers:headers});const data=await readJson(res);if(!res.ok)throw new Error(data.detail||'Could not poll training status.');showJob(data);if(['queued','processing'].includes(data.status)){pollHandle=setTimeout(function(){pollJob(jobId);},1500);}}
+ catch(e){setStatus('trainStatus','Could not check training status: '+(e.message||String(e)),'error');$('trainBtn').disabled=false;activeJob=null;}
+}
+$('trainBtn').addEventListener('click',async function(){
+ const epochs=Number($('epochs').value),steps=Number($('maxSteps').value);
+ if(!Number.isInteger(epochs)||epochs<1||epochs>20){setStatus('trainStatus','Epochs must be from 1 to 20.','error');return;}
+ if(!Number.isInteger(steps)||steps<1||steps>2000){setStatus('trainStatus','Maximum steps must be from 1 to 2000.','error');return;}
+ let base,headers;try{base=baseUrl();headers=authHeaders();}catch(e){setStatus('trainStatus',e.message,'error');return;}
+ $('trainBtn').disabled=true;setStatus('trainStatus','Starting local training process…');$('logs').hidden=false;$('logs').textContent='';$('progress').style.width='0%';
+ try{
+  const form=new FormData();form.append('epochs',String(epochs));form.append('max_steps',String(steps));
+  const res=await fetch(base+'/api/training/start',{method:'POST',headers:headers,body:form});const data=await readJson(res);
+  if(!res.ok)throw new Error(data.detail||('Could not start training, HTTP '+res.status));
+  activeJob=data.id;showJob(data);pollJob(data.id);
+ }catch(e){$('trainBtn').disabled=false;setStatus('trainStatus',e.message||String(e),'error');}
+});
+})();
+</script>
+</body>
+</html>

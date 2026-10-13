@@ -138,20 +138,27 @@ def inspect_sequence(folder: Path, report_dir: Path) -> dict:
         return record
     if d["frames"] < 8 or t["frames"] < 8:
         record["errors"].append("Each video needs at least eight decodable frames.")
-    if abs(int(d["frames"]) - int(t["frames"])) > 1:
-        record["errors"].append(
-            f"Frame counts differ ({d['frames']} vs {t['frames']}). Align the target to the driving video."
+    if int(d["frames"]) != int(t["frames"]):
+        record["warnings"].append(
+            f"Frame counts differ ({d['frames']} vs {t['frames']}); the trainer maps target frames across the clip's relative duration. Check the contact sheet and motion alignment."
         )
     fps_delta = abs(float(d["fps"]) - float(t["fps"]))
     if fps_delta > 0.2:
-        record["errors"].append(
-            f"Frame rates differ ({d['fps']:.3f} vs {t['fps']:.3f}). Use the same fps and timing."
+        record["warnings"].append(
+            f"Frame rates differ ({d['fps']:.3f} vs {t['fps']:.3f}); matching action timing still needs a manual check."
         )
     duration_delta = abs(float(d["duration"]) - float(t["duration"]))
     if duration_delta > 0.08:
-        record["errors"].append(
-            f"Durations differ ({d['duration']:.3f}s vs {t['duration']:.3f}s). Synchronise both videos."
-        )
+        shorter = min(float(d["duration"]), float(t["duration"]))
+        longer = max(float(d["duration"]), float(t["duration"]))
+        if shorter <= 0 or longer / shorter > 1.75:
+            record["errors"].append(
+                f"Durations differ too much ({d['duration']:.3f}s vs {t['duration']:.3f}s). Trim them closer before training."
+            )
+        else:
+            record["warnings"].append(
+                f"Durations differ ({d['duration']:.3f}s vs {t['duration']:.3f}s); the trainer will map target frames across clip progress. Review the contact sheet."
+            )
     if d["frames"] > 3000 or t["frames"] > 3000:
         record["warnings"].append("Long training sequence; consider splitting it into shorter aligned clips.")
     if d.get("width", 0) < 128 or d.get("height", 0) < 192:

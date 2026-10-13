@@ -50,14 +50,14 @@ class PrepareDataTests(unittest.TestCase):
         self.assertTrue(result["ok"], result["errors"])
         self.assertTrue(Path(result["contact_sheet"]).is_file())
 
-    def test_misaligned_frame_counts_are_rejected(self):
+    def test_slightly_different_frame_counts_are_allowed_with_warning(self):
         if not write_video(self.sequence / "driving.mp4", 24, 24.0, 0):
             self.skipTest("MP4V encoder unavailable in this environment")
-        if not write_video(self.sequence / "target.mp4", 12, 24.0, 8):
+        if not write_video(self.sequence / "target.mp4", 20, 24.0, 8):
             self.skipTest("MP4V encoder unavailable in this environment")
         result = inspect_sequence(self.sequence, self.report)
-        self.assertFalse(result["ok"])
-        self.assertTrue(any("Frame counts differ" in error for error in result["errors"]))
+        self.assertTrue(result["ok"], result["errors"])
+        self.assertTrue(any("Frame counts differ" in warning for warning in result["warnings"]))
 
     def test_identical_source_and_target_are_rejected(self):
         source = self.sequence / "driving.mp4"
