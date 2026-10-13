@@ -65,6 +65,7 @@
 .clip-credit{font-size:11px;color:#c7bddf;text-decoration:none;max-width:52%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.clip-credit:hover{color:#fff;text-decoration:underline}.template-bottom{gap:10px}.motion-preview-shell{display:block!important}
 
 
+.engine-connection{margin:14px 0 16px;padding:13px;border:1px solid #40364e;border-radius:12px;background:#111019}.engine-connection summary{font-size:13px;font-weight:800;cursor:pointer;color:#e9ddff}.engine-connection p{font-size:12px;line-height:1.55;color:#bdb6cc}.engine-connection label{display:block;font-size:12px;color:#d6cde5;margin:10px 0 5px}.engine-connection input{display:block;width:100%;min-width:0;border:1px solid #494156;border-radius:9px;background:#09090e;color:#fff;padding:11px 12px;margin-top:5px}.engine-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.engine-actions .secondary{font-size:12px;padding:10px 8px}@media(max-width:450px){.engine-actions{grid-template-columns:1fr}}
 .processing-consent{display:flex;gap:10px;align-items:flex-start;margin:16px 0 12px;padding:12px;border:1px solid #554766;border-radius:12px;background:#a78bfa0d;color:#dfd7ef;font-size:12px;line-height:1.55;cursor:pointer}
 .hf-auth{display:block;margin:12px 0;padding:12px;border:1px solid #554766;border-radius:12px;background:#ffffff05;color:#dfd7ef;font-size:12px;line-height:1.55}.hf-auth strong{display:block;margin-bottom:5px}.hf-auth small{display:block;color:#aaa2ba;margin-top:5px}.hf-auth a{color:#c4b5fd}.hf-auth input{display:block;width:100%;box-sizing:border-box;margin-top:9px;padding:11px 12px;border-radius:9px;border:1px solid #554766;background:#0c0a15;color:#fff;font:inherit}
 .processing-consent input{flex:0 0 auto;width:17px;height:17px;margin:1px 0 0;accent-color:#a78bfa;cursor:pointer}
@@ -120,7 +121,17 @@
 <div id="carStatus" class="file-status">No car photo selected yet.</div>
 <img id="carPreviewImage" alt="Preview of car reveal photo" hidden style="width:100%;max-height:190px;object-fit:contain;border-radius:10px;background:#07070d;margin-top:8px">
 </div>
-<div class="motion-upload-block" id="motionUploadBlock"><div class="motion-title">Dance clip</div><div class="motion-caption">Choose a moving template or upload a source video. A full-body AI model will recreate the person in the clip from your reference photo.</div><label class="upload motion-upload" id="motionUploadArea"><strong>＋ Use my own dance video (optional)</strong><small>MP4 or WebM, up to 80 MB. Leave blank to use the selected template.</small><input id="motionInput" type="file" accept="video/mp4,video/webm,video/quicktime"></label><div id="motionStatus" class="file-status">Using the built-in template clip.</div><button id="clearMotionBtn" class="secondary wide" type="button" style="display:none;margin-top:8px">Reset to template clip</button><div class="motion-preview-shell" id="motionPreviewShell"><video id="motionPreviewVideo" muted loop autoplay playsinline preload="metadata" crossorigin="anonymous"></video></div></div><div class="photo-preview" id="photoPreview" hidden><img id="photoPreviewImage" alt="Your selected photo"><div><strong id="photoPreviewName"></strong><span>Reference photo loaded for full-body replacement.</span></div></div><div class="hf-auth"><strong>Optional: use your own free GPU quota</strong><small>The shared AI quota is exhausted. A Hugging Face read token may let EffectLab use your account’s own ZeroGPU allowance. <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Create a token</a>.</small><input id="hfTokenInput" type="password" placeholder="Paste your hf_ token (optional)" autocomplete="off" autocapitalize="off" spellcheck="false"><small>Your token is held only in this page while it is open and sent directly to Hugging Face. EffectLab does not save it to browser storage or send it to an EffectLab server. Use a read-only token, never a write/admin token. Hugging Face free GPU quota is limited.</small></div><label class="processing-consent"><input id="aiConsent" type="checkbox"><span>I understand my photo and the template video built by EffectLab will be sent to an external AI processing service to create the result. I will only use photos and footage I have permission to use.</span></label><button class="primary wide" id="generateBtn">Generate video in EffectLab</button><div id="freeResult" style="display:none;margin-top:16px"></div><div class="notice">Generation stays on this page. Your photo and generated source clip are sent to an external AI processing service for rendering, but you will not be redirected to its website. The free shared GPU can be busy or hit a usage limit, so a render may occasionally need another attempt.</div></div></div><div class="toast" id="toast" role="status"></div>
+<div class="motion-upload-block" id="motionUploadBlock"><div class="motion-title">Dance clip</div><div class="motion-caption">Choose a moving template or upload a source video. A full-body AI model will recreate the person in the clip from your reference photo.</div><label class="upload motion-upload" id="motionUploadArea"><strong>＋ Use my own dance video (optional)</strong><small>MP4 or WebM, up to 80 MB. Leave blank to use the selected template.</small><input id="motionInput" type="file" accept="video/mp4,video/webm,video/quicktime"></label><div id="motionStatus" class="file-status">Using the built-in template clip.</div><button id="clearMotionBtn" class="secondary wide" type="button" style="display:none;margin-top:8px">Reset to template clip</button><div class="motion-preview-shell" id="motionPreviewShell"><video id="motionPreviewVideo" muted loop autoplay playsinline preload="metadata" crossorigin="anonymous"></video></div></div><div class="photo-preview" id="photoPreview" hidden><img id="photoPreviewImage" alt="Your selected photo"><div><strong id="photoPreviewName"></strong><span>Reference photo loaded for full-body replacement.</span></div></div><div class="hf-auth"><strong>Optional: use your own free GPU quota</strong><small>The shared AI quota is exhausted. A Hugging Face read token may let EffectLab use your account’s own ZeroGPU allowance. <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Create a token</a>.</small><input id="hfTokenInput" type="password" placeholder="Paste your hf_ token (optional)" autocomplete="off" autocapitalize="off" spellcheck="false"><small>Your token is held only in this page while it is open and sent directly to Hugging Face. EffectLab does not save it to browser storage or send it to an EffectLab server. Use a read-only token, never a write/admin token. Hugging Face free GPU quota is limited.</small></div><label class="processing-consent"><input id="aiConsent" type="checkbox"><span>I understand my photo and the template video built by EffectLab will be sent to an external AI processing service to create the result. I will only use photos and footage I have permission to use.</span></label><details class="engine-connection" id="engineConnection">
+<summary>Connect your own EffectLab GPU engine (optional)</summary>
+<p>For reliable full-body rendering, connect this site to your own GPU backend. Build and run the backend from the repository's backend folder. Leave the URL blank to use the shared public renderer.</p>
+<label for="engineApiUrl">GPU engine HTTPS URL</label>
+<input id="engineApiUrl" type="url" placeholder="https://your-engine.example" autocomplete="url">
+<label for="engineApiKey">Private engine API key</label>
+<input id="engineApiKey" type="password" placeholder="Your server key" autocomplete="off">
+<div class="engine-actions"><button class="secondary wide" type="button" id="saveEngineSettings">Save engine settings</button><button class="secondary wide" type="button" id="testEngineSettings">Test connection</button></div>
+<div class="file-status" id="engineSettingsStatus">Shared public renderer selected.</div>
+</details>
+<button class="primary wide" id="generateBtn">Generate video in EffectLab</button><div id="freeResult" style="display:none;margin-top:16px"></div><div class="notice">Generation stays on this page. Your photo and generated source clip are sent to an external AI processing service for rendering, but you will not be redirected to its website. The free shared GPU can be busy or hit a usage limit, so a render may occasionally need another attempt.</div></div></div><div class="toast" id="toast" role="status"></div>
 <script>
 const templateData={
   '24 Car Reveal':{src:'https://videos.pexels.com/video-files/7677198/7677198-sd_540_960_25fps.mp4',kind:'car24',page:'https://capcut.com/template-detail/TikTok-Trend-24/7357433910453734676',author:'EffectLab trend remix'},
@@ -219,6 +230,102 @@ async function runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positi
     return blob;
   }finally{try{if(client&&typeof client.close==='function')client.close();}catch(e){}}
 }
+
+const ENGINE_URL_STORAGE='effectlabEngineUrl';
+const ENGINE_KEY_STORAGE='effectlabEngineKey';
+function normaliseEngineUrl(value){return String(value||'').trim().replace(/\/+$/,'');}
+function getEngineConfig(){
+  const base=normaliseEngineUrl(($('engineApiUrl')&&$('engineApiUrl').value)||localStorage.getItem(ENGINE_URL_STORAGE)||'');
+  const key=String(($('engineApiKey')&&$('engineApiKey').value)||sessionStorage.getItem(ENGINE_KEY_STORAGE)||'').trim();
+  return {base,key};
+}
+function engineSettingsMessage(text){const el=$('engineSettingsStatus');if(el)el.textContent=text;}
+function hydrateEngineSettings(){
+  $('engineApiUrl').value=localStorage.getItem(ENGINE_URL_STORAGE)||'';
+  $('engineApiKey').value=sessionStorage.getItem(ENGINE_KEY_STORAGE)||'';
+  engineSettingsMessage($('engineApiUrl').value?'Custom GPU engine configured for this browser. Test the connection before rendering.':'Shared public renderer selected.');
+}
+function saveEngineSettings(){
+  const base=normaliseEngineUrl($('engineApiUrl').value);
+  const key=String($('engineApiKey').value||'').trim();
+  if(!base){
+    localStorage.removeItem(ENGINE_URL_STORAGE);
+    sessionStorage.removeItem(ENGINE_KEY_STORAGE);
+    $('engineApiUrl').value='';
+    $('engineApiKey').value='';
+    engineSettingsMessage('Custom engine removed. Shared public renderer selected.');
+    toastMsg('Using the shared public renderer.');
+    return;
+  }
+  let url;
+  try{url=new URL(base);}catch(e){engineSettingsMessage('Enter a valid server URL, including https://.');return;}
+  if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname))){
+    engineSettingsMessage('Use HTTPS for a public server. HTTP is allowed only for localhost testing.');return;
+  }
+  if(!key){engineSettingsMessage('Enter the private API key that you set on your GPU server.');return;}
+  localStorage.setItem(ENGINE_URL_STORAGE,base);
+  sessionStorage.setItem(ENGINE_KEY_STORAGE,key);
+  $('engineApiUrl').value=base;
+  $('engineApiKey').value=key;
+  engineSettingsMessage('Settings saved in this browser. Test connection to check GPU readiness.');
+  toastMsg('EffectLab engine settings saved.');
+}
+async function testEngineSettings(){
+  const cfg=getEngineConfig();
+  if(!cfg.base){engineSettingsMessage('Enter an engine URL first.');return;}
+  const button=$('testEngineSettings');button.disabled=true;button.textContent='Testing…';
+  try{
+    const res=await fetch(cfg.base+'/health',{method:'GET',headers:{'Accept':'application/json'}});
+    let data={};try{data=await res.json();}catch(e){}
+    if(!res.ok)throw new Error((data.detail||data.error||('HTTP '+res.status)));
+    const gpu=data.gpu&&data.gpu.available?('GPU: '+(data.gpu.name||'available')):'GPU not visible yet';
+    if(data.ready){engineSettingsMessage('Connected ✓ Model ready. '+gpu+'. The custom backend will be used for generation.');toastMsg('GPU engine is ready.');}
+    else if(data.loading){engineSettingsMessage('Connected. Model weights are still loading. Check again in a few minutes. '+gpu+'.');}
+    else{engineSettingsMessage('Connected, but engine is not ready: '+String(data.error||'check the backend logs').slice(0,260));}
+  }catch(e){engineSettingsMessage('Could not reach the engine: '+String(e&&e.message||e).slice(0,340)+'. Confirm HTTPS, backend CORS settings, and that the server is running.');}
+  finally{button.disabled=false;button.textContent='Test connection';}
+}
+$('saveEngineSettings').addEventListener('click',saveEngineSettings);
+$('testEngineSettings').addEventListener('click',testEngineSettings);
+hydrateEngineSettings();
+async function runSelfHostedEngine(cfg,modelPhoto,danceFile,frameCap,positivePrompt){
+  if(!cfg.base||!cfg.key)throw new Error('Your custom engine needs both an HTTPS URL and its private EFFECTLAB_API_KEY. Expand Connect your own EffectLab GPU engine to update them.');
+  const form=new FormData();
+  form.append('image',modelPhoto,modelPhoto.name||'reference.jpg');
+  form.append('video',danceFile,danceFile.name||'source.mp4');
+  form.append('frame_cap',String(frameCap));
+  form.append('prompt',positivePrompt||'The person is dancing. Replace the complete person from the reference photo.');
+  form.append('negative_prompt',NEGATIVE_PROMPT);
+  $('fileStatus').textContent='Uploading the reference and source clip to your EffectLab GPU server…';
+  let createResponse,created;
+  try{
+    createResponse=await fetch(cfg.base+'/api/jobs',{method:'POST',headers:{'Authorization':'Bearer '+cfg.key},body:form});
+    created=await createResponse.json();
+  }catch(e){throw new Error('Could not connect to your GPU API. Confirm its public HTTPS URL and CORS origin. '+String(e&&e.message||e).slice(0,220));}
+  if(!createResponse.ok)throw new Error('EffectLab GPU server: '+String(created.detail||created.error||('HTTP '+createResponse.status)).slice(0,500));
+  if(!created.id)throw new Error('The GPU server accepted the request but returned no render job ID.');
+  const started=Date.now();
+  while(Date.now()-started<1800000){
+    await new Promise(resolve=>setTimeout(resolve,2200));
+    let res,data;
+    try{res=await fetch(cfg.base+'/api/jobs/'+encodeURIComponent(created.id),{headers:{'Authorization':'Bearer '+cfg.key,'Accept':'application/json'}});data=await res.json();}
+    catch(e){throw new Error('Lost connection while checking render progress. The job ID is '+created.id+'. '+String(e&&e.message||e).slice(0,180));}
+    if(!res.ok)throw new Error('Could not read render status: '+String(data.detail||('HTTP '+res.status)).slice(0,320));
+    if(data.status==='failed')throw new Error('Full-body renderer failed: '+String(data.error||data.message||'Unknown model error').slice(0,500));
+    const pct=Math.round(Math.max(0,Math.min(1,Number(data.progress)||0))*100);
+    $('fileStatus').textContent='Your GPU engine · '+pct+'% · '+String(data.message||data.status||'Rendering');
+    if(data.status==='complete'){
+      const resultRes=await fetch(cfg.base+'/api/jobs/'+encodeURIComponent(created.id)+'/result',{headers:{'Authorization':'Bearer '+cfg.key}});
+      if(!resultRes.ok){let err={};try{err=await resultRes.json();}catch(e){}throw new Error('The render finished but the MP4 download failed: '+String(err.detail||('HTTP '+resultRes.status)));}
+      const blob=await resultRes.blob();
+      if(blob.size<12000)throw new Error('The GPU returned an unexpectedly small output file. Check server logs before retrying.');
+      return blob;
+    }
+    if(!['queued','processing'].includes(data.status))throw new Error('Unexpected render state: '+String(data.status));
+  }
+  throw new Error('This render has exceeded the 30-minute browser wait limit. Check the GPU server for job '+created.id+'.');
+}
+
 async function renderFullBodySwap(photoFile,templateName){
   if(photoFile.size>20*1024*1024)throw new Error('Reference photo is too large. Use an image under 20 MB.');
   $('fileStatus').textContent='Optimising the reference photo for full-body rendering…';
@@ -229,18 +336,26 @@ async function renderFullBodySwap(photoFile,templateName){
   const frameCap=templateName==='Gas Station Dance'?150:120;
   const hfToken=String($('hfTokenInput')&&$('hfTokenInput').value||'').trim();
   $('fileStatus').textContent='Prepared: '+(modelPhoto.size/1048576).toFixed(1)+' MB reference photo · '+frameCap+' frames · '+(danceFile.type||'video').replace('video/','').toUpperCase()+' source.'+(hfToken?' · using your Hugging Face token':' · using shared free quota');
-  const providers=[
-    {name:'Backup Wan Animate',base:'https://alexnasa-wan2-2-animate-zerogpu.hf.space',kind:'alexnasa',endpoint:'/animate_scene'},
-    {name:'Wan Animate',base:MODEL_BASE,kind:'neksjgg',endpoint:'/generate_video'}
-  ];
-  let outputBlob=null;const providerErrors=[];
-  for(let i=0;i<providers.length;i++){
-    const provider=providers[i];
-    $('fileStatus').textContent=(i===0?'Trying the alternate free AI renderer inside EffectLab…':'The first renderer failed. Trying the backup inside EffectLab…');
-    try{outputBlob=await runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positivePrompt,templateName,hfToken);$('fileStatus').textContent=provider.name+' finished the render. Finalising the video inside EffectLab…';break;}
-    catch(e){const detail=String(e&&e.message||e).split(String.fromCharCode(10))[0].slice(0,420);providerErrors.push(provider.name+': '+detail);console.warn('EffectLab provider failed:',provider.name,e);if(i<providers.length-1)$('fileStatus').textContent=provider.name+' did not complete; automatically switching renderer…';}
+  let outputBlob=null;
+  const ownEngine=getEngineConfig();
+  if(ownEngine.base){
+    $('fileStatus').textContent='Connecting to your EffectLab GPU engine…';
+    outputBlob=await runSelfHostedEngine(ownEngine,modelPhoto,danceFile,frameCap,positivePrompt);
+    $('fileStatus').textContent='Your own GPU engine finished the full-body render. Finalising the video…';
+  }else{
+    const providers=[
+      {name:'Backup Wan Animate',base:'https://alexnasa-wan2-2-animate-zerogpu.hf.space',kind:'alexnasa',endpoint:'/animate_scene'},
+      {name:'Wan Animate',base:MODEL_BASE,kind:'neksjgg',endpoint:'/generate_video'}
+    ];
+    const providerErrors=[];
+    for(let i=0;i<providers.length;i++){
+      const provider=providers[i];
+      $('fileStatus').textContent=(i===0?'Trying the alternate free AI renderer inside EffectLab…':'The first renderer failed. Trying the backup inside EffectLab…');
+      try{outputBlob=await runFullBodyProvider(provider,modelPhoto,danceFile,frameCap,positivePrompt,templateName,hfToken);$('fileStatus').textContent=provider.name+' finished the render. Finalising the video inside EffectLab…';break;}
+      catch(e){const detail=String(e&&e.message||e).split(String.fromCharCode(10))[0].slice(0,420);providerErrors.push(provider.name+': '+detail);console.warn('EffectLab provider failed:',provider.name,e);if(i<providers.length-1)$('fileStatus').textContent=provider.name+' did not complete; automatically switching renderer…';}
+    }
+    if(!outputBlob)throw new Error('Both free AI renderers failed. '+providerErrors.join(' | ')+'. Their queues or hosting may be temporarily unavailable; try again later.');
   }
-  if(!outputBlob)throw new Error('Both free AI renderers failed. '+providerErrors.join(' | ')+'. Their queues or hosting may be temporarily unavailable; try again later.');
   let finalBlob=outputBlob;
   if(templateName==='24 Car Reveal')finalBlob=await composeTwentyFourFinal(outputBlob);
   else if(templateName==='Gas Station Dance')finalBlob=await composeGasStationFinal(outputBlob);
