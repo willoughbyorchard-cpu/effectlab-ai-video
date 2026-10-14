@@ -20,6 +20,7 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.checkpoint import checkpoint as gradient_checkpoint
 
 from scratch_model import EffectLabScratchVideoAI
 
@@ -135,11 +136,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train EffectLab Scratch video AI from random initialisation.")
     parser.add_argument("--data", required=True, help="Folder containing aligned sequence subfolders.")
     parser.add_argument("--output", default="weights/effectlab_scratch.pt")
+    parser.add_argument("--resume", default="", help="Optional checkpoint to continue from instead of random initialisation.")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.0002)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=0, help="Optional step limit for laptop experiments; does not make a production model.")
+    parser.add_argument("--gradient-checkpointing", action="store_true", help="Trade extra compute for lower activation memory during training.")
     parser.add_argument("--height", type=int, default=HEIGHT)
     parser.add_argument("--width", type=int, default=WIDTH)
     parser.add_argument("--clip-frames", type=int, default=CLIP_FRAMES)
@@ -158,7 +161,7 @@ def main() -> None:
     HEIGHT, WIDTH, CLIP_FRAMES = args.height, args.width, args.clip_frames
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cpu":
-        torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
+        torch.set_num_threads(max(1, min(4, int(os.environ.get("EFFECTLAB_NUM_THREADS", "1")))))
     if device.type == "cuda":
         print("Training on", torch.cuda.get_device_name(0))
     else:
@@ -173,10 +176,26 @@ def main() -> None:
         pin_memory=(device.type == "cuda"),
     )
     model = EffectLabScratchVideoAI(base_channels=args.base_channels).to(device)
+    start_step = 0
+    start_epoch = 0
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.is_file():
+            parser.error(f"Resume checkpoint does not exist: {resume_path}")
+        saved = torch.load(resume_path, map_location="cpu", weights_only=False)
+        config = saved.get("config", {})
+        if int(config.get("base_channels", args.base_channels)) != args.base_channels:
+            parser.error("--base-channels must match the resume checkpoint configuration.")
+        if int(config.get("height", HEIGHT)) != HEIGHT or int(config.get("width", WIDTH)) != WIDTH or int(config.get("clip_frames", CLIP_FRAMES)) != CLIP_FRAMES:
+            print("Resume note: data tensor dimensions are set by CLI arguments; ensure they match checkpoint config.", flush=True)
+        model.load_state_dict(saved["model_state"])
+        start_step = int(saved.get("steps", 0))
+        start_epoch = int(saved.get("epoch", 0))
+        print(f"Resumed weights from {resume_path} at cumulative step {start_step}; optimizer state starts fresh.", flush=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.99), weight_decay=0.01)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    step = 0
+    step = start_step
     started = time.time()
     model.train()
 
@@ -188,7 +207,7 @@ def main() -> None:
             driving = driving.to(device, non_blocking=True)
             target = target.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            predicted = model(reference, driving)
+            predicted = gradient_checkpoint(model, reference, driving, use_reentrant=False) if args.gradient_checkpointing else model(reference, driving)
             loss, parts = _loss(predicted, target)
             if not torch.isfinite(loss):
                 raise RuntimeError(f"Non-finite loss at step {step}; check the source/target videos.")
@@ -205,15 +224,16 @@ def main() -> None:
                     f"temporal={parts['temporal']:.4f} edges={parts['edges']:.4f}",
                     flush=True,
                 )
-            if args.max_steps and step >= args.max_steps:
+            if args.max_steps and step - start_step >= args.max_steps:
                 break
         mean_loss = epoch_loss / max(samples, 1)
         print(f"epoch={epoch} mean_loss={mean_loss:.4f} elapsed_min={(time.time()-started)/60:.1f}", flush=True)
         checkpoint = {
             "model_name": "EffectLabScratchVideoAI-CompactV2",
             "model_state": model.state_dict(),
-            "epoch": epoch,
+            "epoch": start_epoch + epoch,
             "steps": step,
+            "continued_from_step": start_step,
             "mean_loss": mean_loss,
             "config": {"height": HEIGHT, "width": WIDTH, "clip_frames": CLIP_FRAMES, "base_channels": args.base_channels},
             "trained_from_random_initialisation": True,
@@ -222,7 +242,7 @@ def main() -> None:
         temp_output = output.with_suffix(output.suffix + ".tmp")
         torch.save(checkpoint, temp_output)
         temp_output.replace(output)
-        if args.max_steps and step >= args.max_steps:
+        if args.max_steps and step - start_step >= args.max_steps:
             break
 
     print(f"Saved checkpoint to {output}")
