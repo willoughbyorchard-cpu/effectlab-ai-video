@@ -1,33 +1,22 @@
 # EffectLab AI
 
-EffectLab is a browser UI plus a self-hosted AI video experiment. It contains an original neural network, trained from random initialisation, rather than a downloaded pretrained video generator.
+EffectLab is a browser UI plus an experimental first-party video model. Its default Scratch inference path uses a custom neural network trained from random initialization. The provided cloud configuration does **not** set a third-party inference key.
 
-## Start here
+## Try the website
 
-- Open backend/README.md for laptop setup and dataset instructions.
-- The main website is deployed from index.html; train.html is the training and dataset-upload page.
-- On Windows, run .\\backend\\setup-laptop.ps1, then .\\backend\\run-local.ps1 from PowerShell.
-- On Mac/Linux, run bash backend/setup-laptop.sh, then bash backend/run-local.sh.
-- Visit http://127.0.0.1:7860/train.html to upload training examples to your local engine and start training.
+- Website: https://willoughbyorchard-cpu.github.io/effectlab-ai-video/
+- Training/data guide: open backend/README.md.
+- Local option: install with backend/setup-laptop.ps1 (Windows) or backend/setup-laptop.sh (Mac/Linux), then run the matching local launcher.
+- Cloud option: render.yaml defines a Render web service. Create a Blueprint from this repository in Render and supply a private EFFECTLAB_ACCESS_TOKEN when prompted. The website points at the intended hosted URL; once the service is deployed and healthy, paste the same token into the password field. The public website itself is static, while Render runs the Python model.
 
-The public GitHub Pages site is static and cannot train or run inference on GitHub's servers. The training page connects to the Python engine running on the user's own laptop. Training videos stay on that computer. The repository now includes a small experimental first-party checkpoint for local testing; see `backend/weights/README.md`. No pretrained generator weights or third-party inference API are used.
+Render's shared free service may go idle after inactivity and need time to wake, but it does not require you to start a server on your laptop or iPad. The first cloud deployment still needs to be created in your hosting account, and it is not considered live until the service passes its health check.
 
-## Important limitations
+## Current model and limits
 
-A compact CPU-friendly training path is implemented, but the repository does not include a trained checkpoint. The model starts from random weights and the first training runs are experiments. A completed training run does not guarantee a meaningful person replacement. The current inference path supports person replacement only, at low resolution, without preserving audio. Object replacement is not implemented.
+The included checkpoint records 1,270 optimizer steps and outputs 80 × 144 pixels. In an eight-clip evaluation from the same single demo scene used for training, it improved the combined pixel/temporal/edge loss by about 3.7% versus the previous checkpoint at the same output size. That is a narrow same-scene measurement, **not** evidence of reliable swaps on arbitrary videos. Faces, clothing, and movement can remain blurry or distorted; the output drops audio. Object replacement is not implemented.
 
+The model has so far trained on one short public demonstration source/result/reference triplet, and rights for that demo material have not been independently confirmed. Do not treat this checkpoint as cleared for commercial use. For meaningful generalisation, use a diverse set of properly aligned pairs that you own or are licensed to use.
 
-## Automatic hosted generation with fal.ai
+## Optional legacy provider mode
 
-EffectLab can use fal.ai's PixVerse Swap API instead of the experimental local scratch model. The API key must be configured **only on the backend host** as the `FAL_KEY` environment secret. Never put it in `index.html`, browser JavaScript, or a committed file.
-
-- Model endpoint: `fal-ai/pixverse/swap` (person swap, up to 720p according to the provider schema).
-- Optional override: `EFFECTLAB_FAL_MODEL`.
-- The backend uploads the reference image and source clip to fal.ai, submits a swap job, and downloads the result.
-- fal.ai usage is billed according to its current model pricing; check the model page before testing.
-
-### Run/deploy the backend
-
-The GitHub Pages site is static and cannot keep the API key secret or run the backend. Deploy the `backend` directory/container to a server host that supports Docker and environment secrets, set `FAL_KEY` in that host's secret/environment settings, and allow the site origin `https://willoughbyorchard-cpu.github.io` in `EFFECTLAB_ALLOWED_ORIGINS`. Then set the backend's public HTTPS URL in the EffectLab engine URL field. Once that backend is deployed and running, visitors will not need to open Colab or activate an engine.
-
-Before a public launch, add per-user rate limits/authentication and a budget cap: this API key pays for requests made through your website. Do not expose the backend publicly without abuse controls.
+The backend still contains an optional fal.ai API path for experiments. It runs only when FAL_KEY is explicitly configured as a server-side secret. The Render Blueprint described above does not set FAL_KEY and is designed to use the project's own Scratch checkpoint instead. Never put API secrets in browser JavaScript or commit them to GitHub.

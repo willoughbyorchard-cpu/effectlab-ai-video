@@ -35,7 +35,7 @@ The Training page can upload one ZIP, a directory selection, or multiple individ
 
 The initial laptop configuration uses 64 by 96 pixel frames, four-frame clips and eight base channels. This is intentionally small to reduce memory use on a 16 GB laptop. Training can still be slow. The network is trained from random initialization and may produce distorted frames, learn colour correlations, or fail to replace the identity at all. Ten examples can exercise the pipeline, but cannot guarantee a functional general-purpose swap model. A good general-purpose video model from scratch requires far more data, compute and architecture development.
 
-The training page defaults to 1 epoch and 20 steps to keep the first attempt bounded. Increase those settings only after the first run completes without memory or thermal issues. The saved checkpoint is `backend/weights/effectlab_scratch.pt`. A 1,158-step experimental checkpoint is included so the local renderer can be tested immediately; the checkpoint documentation in `backend/weights/README.md` describes how it was trained and its limits.
+The training page defaults to 1 epoch and 20 steps to keep the first attempt bounded. Increase those settings only after the first run completes without memory or thermal issues. The saved checkpoint is `backend/weights/effectlab_scratch.pt`. A 1,270-step experimental checkpoint is included so the renderer can be tested immediately; the checkpoint documentation in `backend/weights/README.md` describes how it was trained and its limits.
 
 ## Manual command
 
@@ -48,7 +48,7 @@ The app reloads the checkpoint after training completes. Inference supports pers
 
 ## Included experimental body-swap checkpoint
 
-The repository includes a first-party checkpoint so the backend can load and render a rough demonstration without the user first running training. The selected checkpoint has 1,158 recorded optimizer steps and uses one short demo scene at 64 × 112 pixels; a small same-scene evaluation improved over the original checkpoint, but this is not a general-purpose or production-ready person replacement system. Review weights/README.md before use. GitHub Pages remains a static frontend and does not run model inference; start the local Python engine for actual rendering.
+The repository includes a first-party checkpoint so the backend can load and render a rough demonstration without the user first running training. The selected checkpoint has 1,270 recorded optimizer steps and uses one short demo scene at 80 × 144 pixels. Evaluation on eight sampled clips from that same scene improved over the earlier checkpoint, but this is not a general-purpose or production-ready person replacement system. Review weights/README.md before use. GitHub Pages remains a static frontend and does not run model inference itself.
 
 
 ## Continuing a saved checkpoint
@@ -58,3 +58,10 @@ train_scratch.py supports --resume to continue from existing weights rather than
     python train_scratch.py --data training-data --resume weights/effectlab_scratch.pt --output weights/effectlab_scratch_next.pt --epochs 100 --max-steps 20 --height 112 --width 64 --clip-frames 2 --base-channels 4 --learning-rate 0.000003
 
 When --resume is used, --max-steps is the number of additional updates. The optional --gradient-checkpointing flag trades speed for lower activation memory. In a 1 GB environment, increasing output dimensions substantially may still exceed memory limits.
+
+
+## Optional cloud deployment
+
+A Render Blueprint is provided at the repository root in render.yaml. In Render, create a new Blueprint from this GitHub repository and use the values it reads from that file. Supply a long random secret when asked for EFFECTLAB_ACCESS_TOKEN; do not place the real token in GitHub. The public website's hosted-engine field should point at the resulting Render URL, and the access token goes into the password field. The cloud backend requires the token for render-job creation/status/download, restricts browser origins, limits render requests, and disables the memory-heavy training API. The shared free instance may take time to wake after inactivity; it does not require this computer or iPad to start a local server.
+
+This is an inference-only deployment path for the custom Scratch model, not fal.ai. It runs on CPU and may be slow or fail if the host's free memory limit is exceeded. It has not been declared deployed until the Render service is created, builds successfully, and passes its health check.

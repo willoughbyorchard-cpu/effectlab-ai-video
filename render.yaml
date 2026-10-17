@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: effectlab-cloud-engine-1270
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    rootDir: backend
+    buildCommand: >-
+      python -m pip install --no-cache-dir
+      --index-url https://download.pytorch.org/whl/cpu
+      --extra-index-url https://pypi.org/simple
+      torch==2.7.1+cpu
+      && python -m pip install --no-cache-dir -r requirements.txt
+    startCommand: >-
+      uvicorn app:app --host 0.0.0.0 --port $PORT
+      --proxy-headers --timeout-keep-alive 300
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: EFFECTLAB_CLOUD_MODE
+        value: "1"
+      - key: EFFECTLAB_ACCESS_TOKEN
+        sync: false
+      - key: EFFECTLAB_ALLOWED_ORIGINS
+        value: https://willoughbyorchard-cpu.github.io
+      - key: EFFECTLAB_MAX_VIDEO_SECONDS
+        value: "8"
+      - key: EFFECTLAB_MAX_JOBS_PER_HOUR
+        value: "2"
+      - key: EFFECTLAB_TORCH_NUM_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"

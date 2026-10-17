@@ -1,9 +1,9 @@
-"""EffectLab Scratch local inference server.
+"""EffectLab Scratch local/cloud inference server.
 
-This backend uses EffectLabScratchVideoAI, a model defined in scratch_model.py
-and initialised from random weights. It downloads no model weights and calls no
-hosted AI inference API. It refuses to generate until a trained checkpoint
-created by train_scratch.py is present.
+By default it runs the first-party EffectLabScratchVideoAI checkpoint from
+scratch_model.py. An optional legacy fal.ai path is selected only when FAL_KEY
+is explicitly configured. The Render Blueprint does not set that key and runs
+the custom Scratch checkpoint in cloud mode with token protection.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from scratch_model import EffectLabScratchVideoAI
 
@@ -49,7 +49,9 @@ MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_VIDEO_BYTES = 80 * 1024 * 1024
 MAX_VIDEO_SECONDS = float(os.environ.get("EFFECTLAB_MAX_VIDEO_SECONDS", "8"))
 MAX_FRAMES = 150
-MAX_JOBS_PER_HOUR = 4
+MAX_JOBS_PER_HOUR = max(1, int(os.environ.get("EFFECTLAB_MAX_JOBS_PER_HOUR", "4")))
+CLOUD_MODE = os.environ.get("EFFECTLAB_CLOUD_MODE", "0").strip().lower() in {"1", "true", "yes"}
+ACCESS_TOKEN = os.environ.get("EFFECTLAB_ACCESS_TOKEN", "").strip()
 FAL_KEY_CONFIGURED = bool(os.environ.get("FAL_KEY"))
 FAL_MODEL_ID = os.environ.get("EFFECTLAB_FAL_MODEL", "fal-ai/pixverse/swap")
 
@@ -92,12 +94,25 @@ MAX_TRAINING_EXPANDED_BYTES = 4 * 1024 * 1024 * 1024
 MAX_TRAINING_FILES = 1000
 
 
-def _require_auth(authorization: str | None) -> None:
-    """No user-entered key is needed for the loopback-only local engine."""
-    # The provided launch scripts bind uvicorn to 127.0.0.1 only. Browser-origin
-    # requests are separately restricted to EFFECTLAB_ALLOWED_ORIGINS below.
-    # Do not expose this development server directly to a public network.
-    return
+def _require_auth(authorization: str | None, *, training: bool = False) -> None:
+    """Keep local use frictionless but require a private bearer token in cloud mode."""
+    if CLOUD_MODE and training:
+        raise HTTPException(
+            status_code=403,
+            detail="Model training is disabled on the shared cloud inference service.",
+        )
+    if CLOUD_MODE and not ACCESS_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="Cloud access is not configured. Set EFFECTLAB_ACCESS_TOKEN in the host's secret settings.",
+        )
+    if not ACCESS_TOKEN:
+        # Local launchers bind to 127.0.0.1; an unset token is only acceptable
+        # outside cloud mode.
+        return
+    expected = "Bearer " + ACCESS_TOKEN
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="Enter the correct EffectLab cloud access token.")
 
 
 @app.middleware("http")
@@ -105,6 +120,18 @@ async def restrict_browser_origins(request: Request, call_next):
     origin = request.headers.get("origin")
     if request.method in {"POST", "PUT", "PATCH", "DELETE"} and origin and origin not in _origins:
         return JSONResponse(status_code=403, content={"detail": "Origin not allowed."})
+
+    # Authenticate before FastAPI parses multipart video uploads, avoiding
+    # unnecessary temporary-file/disk work for unauthorised cloud requests.
+    if CLOUD_MODE and request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+        if request.url.path.startswith("/api/training/"):
+            return JSONResponse(status_code=403, content={"detail": "Model training is disabled on the shared cloud inference service."})
+        if not ACCESS_TOKEN:
+            return JSONResponse(status_code=503, content={"detail": "Cloud access token is not configured."})
+        expected = "Bearer " + ACCESS_TOKEN
+        supplied = request.headers.get("authorization")
+        if not supplied or not secrets.compare_digest(supplied, expected):
+            return JSONResponse(status_code=401, content={"detail": "Enter the correct EffectLab cloud access token."})
     return await call_next(request)
 
 
@@ -206,11 +233,22 @@ def _load_model() -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     cv2.setNumThreads(1)
+    torch.set_num_threads(max(1, int(os.environ.get("EFFECTLAB_TORCH_NUM_THREADS", "1"))))
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
+    if CLOUD_MODE and not ACCESS_TOKEN:
+        STATE.update(ready=False, loading=False, error="EFFECTLAB_ACCESS_TOKEN is not configured for cloud mode.")
+        print("[EffectLab Scratch] cloud mode needs EFFECTLAB_ACCESS_TOKEN.", flush=True)
+        return
     threading.Thread(target=_load_model, daemon=True, name="scratch-model-loader").start()
 
 
 @app.get("/", include_in_schema=False)
-def serve_local_app() -> FileResponse:
+def serve_local_app() -> Any:
+    if CLOUD_MODE:
+        return RedirectResponse("https://willoughbyorchard-cpu.github.io/effectlab-ai-video/", status_code=307)
     if not STATIC_PAGE.is_file():
         raise HTTPException(status_code=404, detail="Local EffectLab interface not found at backend/static/index.html.")
     return FileResponse(STATIC_PAGE, media_type="text/html; charset=utf-8")
@@ -230,9 +268,11 @@ def health() -> dict[str, Any]:
         "service": APP_TITLE,
         "engine": "fal.ai" if FAL_KEY_CONFIGURED else "local-scratch",
         "fal_configured": FAL_KEY_CONFIGURED,
-        "ready": FAL_KEY_CONFIGURED or STATE["ready"],
+        "ready": (FAL_KEY_CONFIGURED or STATE["ready"]) and (not CLOUD_MODE or bool(ACCESS_TOKEN)),
         "loading": STATE["loading"],
-        "error": STATE["error"] if not STATE["ready"] else None,
+        "cloud_mode": CLOUD_MODE,
+        "cloud_auth_required": CLOUD_MODE,
+        "error": ("Cloud access token is not configured." if CLOUD_MODE and not ACCESS_TOKEN else (STATE["error"] if not STATE["ready"] else None)),
         "device": STATE["device"],
         "checkpoint": STATE["checkpoint"],
         "trained_steps": STATE.get("trained_steps", 0),
@@ -610,7 +650,7 @@ def _training_job_update(job_id: str, **values: Any) -> None:
 
 @app.get("/api/training/dataset")
 def training_dataset_status(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_auth(authorization)
+    _require_auth(authorization, training=True)
     sequences = _complete_sequence_dirs(TRAINING_ROOT)
     return {
         "sequences": len(sequences),
@@ -628,7 +668,7 @@ async def upload_training_dataset(
     replace_existing: bool = Form(default=False),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    _require_auth(authorization)
+    _require_auth(authorization, training=True)
     if not files and dataset_zip is None:
         raise HTTPException(status_code=400, detail="Select a training-data folder, files or a ZIP.")
     if len(files) > MAX_TRAINING_FILES:
@@ -802,7 +842,7 @@ def start_training(
     max_steps: int = Form(20),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    _require_auth(authorization)
+    _require_auth(authorization, training=True)
     if epochs < 1 or epochs > 20:
         raise HTTPException(status_code=400, detail="Epochs must be between 1 and 20.")
     if max_steps < 1 or max_steps > 2000:
@@ -827,7 +867,7 @@ def start_training(
 
 @app.get("/api/training/jobs/{job_id}")
 def training_job_status(job_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    _require_auth(authorization)
+    _require_auth(authorization, training=True)
     with TRAINING_JOBS_LOCK:
         job = TRAINING_JOBS.get(job_id)
         if not job:
